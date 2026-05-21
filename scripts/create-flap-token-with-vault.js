@@ -200,6 +200,8 @@ async function main() {
     "event FlapTaxVaultTokenCreated(address indexed token,address indexed vault,address indexed vaultFactory)",
   ];
   const portal = new hre.ethers.Contract(vaultPortal, abi, deployer);
+  const gas = await portal.newTokenV6WithVault.estimateGas(params, { value });
+  console.log("estimatedGas:", gas.toString());
   const tx = await portal.newTokenV6WithVault(params, { value });
   console.log("txHash:", tx.hash);
   const receipt = await tx.wait();
