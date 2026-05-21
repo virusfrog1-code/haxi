@@ -43,7 +43,7 @@ if [ "${FLAP_VAULT_FACTORY}" != "0x9BF671d9F6A55C6dE524936e61E7F21D4e5bDAc0" ]; 
   exit 4
 fi
 
-if [ "${FLAP_TOKEN_SALT}" != "0xe0507f0983faeb8b92be3dbcea8f8a0caae61116657ebb0dcdab06d6c95a383f" ]; then
+if [ "${FLAP_TOKEN_SALT}" != "0xa8afe8dddf4d0646758b161faa9c21a48de973d54bdf363043a18b6f0a81c20a" ]; then
   echo "FLAP_TOKEN_SALT mismatch; stop."
   exit 5
 fi
@@ -82,9 +82,9 @@ const { ethers } = require("ethers");
 const fs = require("fs");
 
 const expectedHash = "0x52aeb419d7afba6a00af6c77ac09c305426303b99b1e0a76f607e90999a98141";
-const expectedToken = "0x8B0aC875358e0F16cBF648220fd147F365f77777";
+const expectedToken = "0x62C3BB481370984BD8f8c01223FA61Ef3d857777";
 const portal = "0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0";
-const implementation = "0xe95ba8270c7956eba2575e57e97c102ee046e6bc";
+const implementation = "0x024f18294970B5c76c0691b87f138A0317156422";
 const initCode = `0x3d602d80600a3d3981f3${"363d3d373d3d3d363d73"}${implementation.slice(2)}5af43d82803e903d91602b57fd5bf3`;
 const predicted = ethers.getCreate2Address(
   portal,

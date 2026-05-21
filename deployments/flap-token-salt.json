@@ -1,0 +1,11 @@
+{
+  "deployer": "0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0",
+  "implementation": "0x024f18294970B5c76c0691b87f138A0317156422",
+  "vaultPortal": "0x90497450f2a706f1951b5bdda52B4E5d16f34C06",
+  "suffix": "7777",
+  "salt": "0xa8afe8dddf4d0646758b161faa9c21a48de973d54bdf363043a18b6f0a81c20a",
+  "predictedTokenAddress": "0x62C3BB481370984BD8f8c01223FA61Ef3d857777",
+  "endsWithSuffix": true,
+  "iterations": 238796,
+  "source": "vaultPortal"
+}

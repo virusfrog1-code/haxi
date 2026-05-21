@@ -131,7 +131,8 @@ async function main() {
     name,
     symbol,
     meta,
-    dexThresh: Number(parseUint("FLAP_DEX_THRESH", 0)),
+    // BSC VaultPortal currently rejects dexThresh=0 for TOKEN_TAXED_V3 launches.
+    dexThresh: Number(parseUint("FLAP_DEX_THRESH", 1)),
     salt,
     migratorType: Number(parseUint("FLAP_MIGRATOR_TYPE", 1)),
     quoteToken: hre.ethers.getAddress(quoteToken),
