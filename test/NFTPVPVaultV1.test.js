@@ -545,21 +545,26 @@ describe("NFTPVPVaultV1", function () {
       "enterQueue",
       "leaveQueue",
       "revealSeed",
+      "claimRevealTimeoutWin",
+      "emergencyCancelMatch",
       "claimNftDividends",
-      "claimLossDividends",
-      "convertMintBuffers",
-      "rescueExcessBNB"
+      "claimLossDividends"
     ]);
+    expect(schema.description).to.include("commit-reveal");
     expect(schema.methods[4].inputs[0].name).to.equal("tokenAmount");
+    expect(schema.methods[4].approvals[0].tokenType).to.equal("taxToken");
     expect(schema.methods[4].approvals[0].amountFieldName).to.equal("tokenAmount");
+    expect(schema.methods[5].description).to.include("keccak256(abi.encodePacked(userAddress, secretSeed))");
+    expect(schema.methods[5].description).to.include("save secretSeed");
+    expect(schema.methods[5].description).to.include("timeout win");
     expect(schema.methods[5].inputs[2].name).to.equal("betAmount");
     expect(schema.methods[5].inputs[3].name).to.equal("seedCommitment");
+    expect(schema.methods[5].approvals[0].tokenType).to.equal("taxToken");
     expect(schema.methods[5].approvals[0].amountFieldName).to.equal("betAmount");
     expect(schema.methods[7].inputs[0].name).to.equal("matchId");
-    expect(schema.methods[7].inputs[1].name).to.equal("seed");
-    expect(schema.methods[10].inputs[0].name).to.equal("minNftBnbOut");
-    expect(schema.methods[10].inputs[1].name).to.equal("minLossBnbOut");
-    expect(schema.methods[10].inputs[2].name).to.equal("deadline");
+    expect(schema.methods[7].inputs[1].name).to.equal("secretSeed");
+    expect(schema.methods[8].inputs[0].name).to.equal("matchId");
+    expect(schema.methods[9].inputs[0].name).to.equal("matchId");
   });
 
   it("factory creates NFTPVPVaultV1 and exposes Flap vaultDataSchema", async function () {

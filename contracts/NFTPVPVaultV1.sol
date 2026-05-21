@@ -517,7 +517,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function vaultUISchema() public pure override returns (VaultUISchema memory schema) {
         schema.vaultType = "NFTPVPVaultV1";
-        schema.description = "NFT PVP vault.";
+        schema.description = "NFT PVP commit-reveal vault. Use the official site to auto-create seed commitments and reveal seeds.";
         schema.methods = new VaultMethodSchema[](12);
 
         _viewNoInput(schema.methods[0], "getStats", "Vault stats.", _statsOutputs());
@@ -528,10 +528,10 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         _writeEnterQueue(schema.methods[5]);
         _writeLeaveQueue(schema.methods[6]);
         _writeRevealSeed(schema.methods[7]);
-        _writeNoInput(schema.methods[8], "claimNftDividends", "Claim NFT BNB.");
-        _writeNoInput(schema.methods[9], "claimLossDividends", "Claim Loss BNB.");
-        _writeConvertMintBuffers(schema.methods[10]);
-        _writeRescue(schema.methods[11]);
+        _writeMatchId(schema.methods[8], "claimRevealTimeoutWin", "After timeout, a revealer may claim if the opponent did not reveal.");
+        _writeMatchId(schema.methods[9], "emergencyCancelMatch", "After timeout, cancel only if neither player revealed; refunds tokens and unlocks NFTs.");
+        _writeNoInput(schema.methods[10], "claimNftDividends", "Claim NFT BNB.");
+        _writeNoInput(schema.methods[11], "claimLossDividends", "Claim Loss BNB.");
     }
 
     function _settleMatch(uint256 matchId, uint256 randomness) private {
@@ -731,12 +731,13 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function _writeEnterQueue(VaultMethodSchema memory method) private pure {
         method.name = "enterQueue";
-        method.description = "Enter queue.";
+        method.description =
+            "Enter with NFT. seedCommitment=keccak256(abi.encodePacked(userAddress, secretSeed)); save secretSeed for revealSeed. Late or missing reveal can let opponent claim timeout win. Official site auto-handles seed/reveal.";
         method.inputs = new FieldDescriptor[](4);
         method.inputs[0] = FieldDescriptor("tierId", "uint256", "Tier id.", 0);
         method.inputs[1] = FieldDescriptor("nftId", "uint256", "NFT id.", 0);
         method.inputs[2] = FieldDescriptor("betAmount", "uint256", "Bet amount.", 18);
-        method.inputs[3] = FieldDescriptor("seedCommitment", "bytes32", "Seed hash.", 0);
+        method.inputs[3] = FieldDescriptor("seedCommitment", "bytes32", "Hash of userAddress and secretSeed.", 0);
         method.outputs = new FieldDescriptor[](0);
         method.approvals = new ApproveAction[](1);
         method.approvals[0] = ApproveAction("taxToken", "betAmount");
@@ -745,10 +746,10 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function _writeRevealSeed(VaultMethodSchema memory method) private pure {
         method.name = "revealSeed";
-        method.description = "Reveal seed.";
+        method.description = "Reveal saved secretSeed after match. If you lose it or reveal too late, the opponent may claim timeout win.";
         method.inputs = new FieldDescriptor[](2);
         method.inputs[0] = FieldDescriptor("matchId", "uint256", "Match id.", 0);
-        method.inputs[1] = FieldDescriptor("seed", "bytes32", "Secret seed.", 0);
+        method.inputs[1] = FieldDescriptor("secretSeed", "bytes32", "Secret seed used for seedCommitment.", 0);
         method.outputs = new FieldDescriptor[](0);
         method.approvals = new ApproveAction[](0);
         method.isWriteMethod = true;
@@ -776,24 +777,14 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         method.isWriteMethod = true;
     }
 
-    function _writeConvertMintBuffers(VaultMethodSchema memory method) private pure {
-        method.name = "convertMintBuffers";
-        method.description = "Convert buffers.";
-        method.inputs = new FieldDescriptor[](3);
-        method.inputs[0] = FieldDescriptor("minNftBnbOut", "uint256", "Min NFT BNB.", 18);
-        method.inputs[1] = FieldDescriptor("minLossBnbOut", "uint256", "Min Loss BNB.", 18);
-        method.inputs[2] = FieldDescriptor("deadline", "uint256", "Deadline.", 0);
-        method.outputs = new FieldDescriptor[](0);
-        method.approvals = new ApproveAction[](0);
-        method.isWriteMethod = true;
-    }
-
-    function _writeRescue(VaultMethodSchema memory method) private pure {
-        method.name = "rescueExcessBNB";
-        method.description = "Rescue excess BNB.";
-        method.inputs = new FieldDescriptor[](2);
-        method.inputs[0] = FieldDescriptor("to", "address", "Recipient.", 0);
-        method.inputs[1] = FieldDescriptor("amount", "uint256", "Amount.", 18);
+    function _writeMatchId(VaultMethodSchema memory method, string memory name, string memory methodDescription)
+        private
+        pure
+    {
+        method.name = name;
+        method.description = methodDescription;
+        method.inputs = new FieldDescriptor[](1);
+        method.inputs[0] = FieldDescriptor("matchId", "uint256", "Match id.", 0);
         method.outputs = new FieldDescriptor[](0);
         method.approvals = new ApproveAction[](0);
         method.isWriteMethod = true;
