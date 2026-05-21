@@ -161,7 +161,7 @@ async function main() {
     fs.existsSync(path.join(__dirname, "..", "deployments", "bsc-mainnet-factory.json"))
       ? JSON.parse(fs.readFileSync(path.join(__dirname, "..", "deployments", "bsc-mainnet-factory.json"), "utf8"))
           .vaultCreationCodeHash
-      : "(deployment file missing)";
+      : hre.ethers.keccak256((await hre.artifacts.readArtifact("NFTPVPVaultV1")).bytecode);
 
   console.log("Prepared Flap Vault token creation parameters:");
   console.log("deployer:", deployer ? deployer.address : "(not required for dry-run)");
@@ -206,16 +206,49 @@ async function main() {
   console.log("txHash:", tx.hash);
   const receipt = await tx.wait();
   console.log("status:", receipt.status);
+  let createdToken;
+  let createdVault;
   for (const log of receipt.logs) {
     try {
       const parsed = portal.interface.parseLog(log);
       if (parsed && parsed.name === "FlapTaxVaultTokenCreated") {
-        console.log("token:", parsed.args.token);
-        console.log("vault:", parsed.args.vault);
+        createdToken = parsed.args.token;
+        createdVault = parsed.args.vault;
         console.log("vaultFactory:", parsed.args.vaultFactory);
       }
     } catch (_) {}
+    try {
+      const factoryIface = new hre.ethers.Interface([
+        "event VaultCreated(address indexed creator,address indexed taxToken,address indexed quoteToken,address vault)",
+      ]);
+      const parsed = factoryIface.parseLog(log);
+      if (parsed && parsed.name === "VaultCreated") {
+        createdToken = parsed.args.taxToken;
+        createdVault = parsed.args.vault;
+      }
+    } catch (_) {}
   }
+
+  if (createdToken) {
+    console.log("token:", createdToken);
+  }
+  if (createdVault) {
+    console.log("vault:", createdVault);
+    try {
+      const vault = await hre.ethers.getContractAt("NFTPVPVaultV1", createdVault);
+      console.log("nft:", await vault.entryNft());
+    } catch (error) {
+      console.log("nft: unavailable", error.shortMessage || error.message);
+    }
+  }
+  if (createdToken) {
+    console.log("flapTaxInfo:", `https://flap.sh/bnb/${createdToken}/taxinfo`);
+    console.log("bscscanToken:", `https://bscscan.com/address/${createdToken}`);
+  }
+  if (createdVault) {
+    console.log("bscscanVault:", `https://bscscan.com/address/${createdVault}`);
+  }
+  console.log("bscscanFactory:", `https://bscscan.com/address/${vaultFactory}`);
 }
 
 main().catch((error) => {

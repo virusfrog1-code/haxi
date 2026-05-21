@@ -1,4 +1,6 @@
 const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -51,6 +53,12 @@ async function main() {
 
   console.log("vaultCreationCodeHash:", vaultCreationCodeHash);
   console.log("vaultData:", vaultData);
+
+  const outDir = path.join(__dirname, "..", "deployments");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outPath = path.join(outDir, "flap-vault-data-mainnet.txt");
+  fs.writeFileSync(outPath, `vaultCreationCodeHash: ${vaultCreationCodeHash}\nvaultData: ${vaultData}\n`);
+  console.log("wrote:", outPath);
 }
 
 main().catch((error) => {
