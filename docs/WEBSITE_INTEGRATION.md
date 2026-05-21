@@ -15,8 +15,10 @@ Load contract addresses from the deployment record or Flap launch output:
 1. Connect the user's wallet on the target BSC network.
 2. Read Vault state through `getStats()`, `getMyInfo(address)`, `pendingNftDividends(address)`, and `pendingLossDividends(address)`.
 3. For `mintNFT(tokenAmount)`, call `TaxToken.approve(vault, tokenAmount)` first.
-4. For `enterQueue(tierId, nftId, betAmount)`, call `TaxToken.approve(vault, betAmount)` first.
-5. Call `leaveQueue(tierId, nftId)`, `claimNftDividends()`, and `claimLossDividends()` directly.
+4. Generate a `bytes32 secretSeed` locally and compute `seedCommitment = keccak256(abi.encodePacked(userAddress, secretSeed))`.
+5. For `enterQueue(tierId, nftId, betAmount, seedCommitment)`, call `TaxToken.approve(vault, betAmount)` first.
+6. After `MatchRequested(matchId, ...)`, call `revealSeed(matchId, secretSeed)`.
+7. Call `leaveQueue(tierId)`, `claimNftDividends()`, and `claimLossDividends()` directly.
 
 The NFT itself does not need ERC721 approval for queue entry. `PvpEntryNFT` only allows the Vault to call `lockByVault`, `unlockByVault`, and `burnByVault`, and locked NFTs cannot be transferred.
 
@@ -31,5 +33,6 @@ The Vault still uses before/after balance checks for compatibility with third-pa
 Flap should render the Vault actions from `vaultUISchema()`:
 
 - `mintNFT(uint256 tokenAmount)` uses ERC20 approval for `tokenAmount`.
-- `enterQueue(uint256 tierId, uint256 nftId, uint256 betAmount)` uses ERC20 approval for `betAmount`.
+- `enterQueue(uint256 tierId, uint256 nftId, uint256 betAmount, bytes32 seedCommitment)` uses ERC20 approval for `betAmount`.
+- `revealSeed(uint256 matchId, bytes32 seed)` does not need ERC20 or ERC721 approval.
 - NFT locking is handled by the Vault/NFT contracts and does not require ERC721 approval.

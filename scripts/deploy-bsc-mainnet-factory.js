@@ -11,6 +11,13 @@ function requireEnv(name) {
   return value.trim();
 }
 
+function requireEnvs(names) {
+  const missing = names.filter((name) => !process.env[name] || process.env[name].trim() === "");
+  if (missing.length > 0) {
+    throw new Error(`Missing required env: ${missing.join(", ")}`);
+  }
+}
+
 function requireAddress(name) {
   const value = requireEnv(name);
   if (!hre.ethers.isAddress(value)) {
@@ -20,7 +27,7 @@ function requireAddress(name) {
 }
 
 async function main() {
-  requireEnv("DEPLOYER_PRIVATE_KEY");
+  requireEnvs(["DEPLOYER_PRIVATE_KEY", "BSC_MAINNET_RPC_URL", "PANCAKE_ROUTER", "WBNB", "TOKEN_PRICE_BNB_PER_TOKEN"]);
   const preflight = await runPreflight();
 
   const network = await hre.ethers.provider.getNetwork();
@@ -42,9 +49,6 @@ async function main() {
     deployer.address,
     preflight.pancakeRouter,
     guardian,
-    preflight.vrfCoordinator,
-    preflight.vrfKeyHash,
-    BigInt(preflight.vrfSubId),
     BigInt(preflight.tokenPriceBnbPerToken),
     vaultCreationCodeHash
   );
@@ -59,9 +63,6 @@ async function main() {
     NFTPVPVaultFactory: factoryAddress,
     PancakeRouter: preflight.pancakeRouter,
     WBNB: preflight.wbnb,
-    VRFCoordinator: preflight.vrfCoordinator,
-    VRFSubId: preflight.vrfSubId.toString(),
-    VRFKeyHash: preflight.vrfKeyHash,
     TokenPriceBnbPerToken: preflight.tokenPriceBnbPerToken.toString(),
     Guardian: guardian,
     vaultCreationCodeHash,

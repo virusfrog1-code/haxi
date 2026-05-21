@@ -12,6 +12,13 @@ function requireEnv(name) {
   return value.trim();
 }
 
+function requireEnvs(names) {
+  const missing = names.filter((name) => !process.env[name] || process.env[name].trim() === "");
+  if (missing.length > 0) {
+    throw new Error(`Missing required env: ${missing.join(", ")}`);
+  }
+}
+
 function requireAddress(name) {
   const value = requireEnv(name);
   if (!hre.ethers.isAddress(value)) {
@@ -71,19 +78,14 @@ async function checkNetworkAndRouter({ rpcUrl, pancakeRouter, wbnb }) {
 }
 
 async function runPreflight() {
+  requireEnvs(["BSC_MAINNET_RPC_URL", "PANCAKE_ROUTER", "WBNB", "TOKEN_PRICE_BNB_PER_TOKEN"]);
   const env = {
     rpcUrl: requireEnv("BSC_MAINNET_RPC_URL"),
     pancakeRouter: requireAddress("PANCAKE_ROUTER"),
     wbnb: requireAddress("WBNB"),
-    vrfCoordinator: requireAddress("VRF_COORDINATOR"),
-    vrfSubId: requireEnv("VRF_SUB_ID"),
-    vrfKeyHash: requireBytes32("VRF_KEY_HASH"),
     tokenPriceBnbPerToken: requireEnv("TOKEN_PRICE_BNB_PER_TOKEN")
   };
 
-  if (BigInt(env.vrfSubId) < 0n || BigInt(env.vrfSubId) > 18446744073709551615n) {
-    throw new Error("VRF_SUB_ID must fit uint64");
-  }
   if (BigInt(env.tokenPriceBnbPerToken) <= 0n) {
     throw new Error("TOKEN_PRICE_BNB_PER_TOKEN must be greater than zero");
   }

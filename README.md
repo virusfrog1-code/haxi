@@ -59,9 +59,6 @@ Set these Replit Secrets before running deployment:
 - `TAX_TOKEN`
 - `PANCAKE_ROUTER`
 - `WBNB`
-- `VRF_COORDINATOR`
-- `VRF_SUB_ID`
-- `VRF_KEY_HASH`
 - `TOKEN_PRICE_BNB_PER_TOKEN` optional on testnet, defaults to `10000000000000` (`0.00001 BNB` per token)
 - `GUARDIAN` optional, defaults to zero address
 
@@ -92,7 +89,7 @@ Mainnet deployment is not part of the default flow. The repository includes guar
 - `scripts/preflight-bsc-mainnet.js`
 - `scripts/deploy-bsc-mainnet-factory.js`
 
-Generate Flap `vaultData` after setting the public router and VRF environment values:
+Generate Flap `vaultData` after setting the public router and fixed valuation environment values:
 
 ```bash
 npm run encode:flap-vault-data

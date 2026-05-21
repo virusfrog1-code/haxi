@@ -8,6 +8,13 @@ function requireEnv(name) {
   return value.trim();
 }
 
+function requireEnvs(names) {
+  const missing = names.filter((name) => !process.env[name] || process.env[name].trim() === "");
+  if (missing.length > 0) {
+    throw new Error(`Missing required env: ${missing.join(", ")}`);
+  }
+}
+
 function requireAddress(name) {
   const value = requireEnv(name);
   if (!hre.ethers.isAddress(value)) {
@@ -16,28 +23,15 @@ function requireAddress(name) {
   return value;
 }
 
-function requireBytes32(name) {
-  const value = requireEnv(name);
-  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
-    throw new Error(`${name} must be a bytes32 hex string`);
-  }
-  return value;
-}
-
 async function main() {
+  requireEnvs(["PANCAKE_ROUTER", "TOKEN_PRICE_BNB_PER_TOKEN"]);
   const router = requireAddress("PANCAKE_ROUTER");
   const guardian =
     process.env.GUARDIAN && process.env.GUARDIAN.trim() !== ""
       ? requireAddress("GUARDIAN")
       : hre.ethers.ZeroAddress;
-  const coordinator = requireAddress("VRF_COORDINATOR");
-  const keyHash = requireBytes32("VRF_KEY_HASH");
-  const subId = BigInt(requireEnv("VRF_SUB_ID"));
   const tokenPriceBnbPerToken = BigInt(requireEnv("TOKEN_PRICE_BNB_PER_TOKEN"));
 
-  if (subId < 0n || subId > 18446744073709551615n) {
-    throw new Error("VRF_SUB_ID must fit uint64");
-  }
   if (tokenPriceBnbPerToken <= 0n) {
     throw new Error("TOKEN_PRICE_BNB_PER_TOKEN must be greater than zero");
   }
@@ -45,8 +39,8 @@ async function main() {
   const artifact = await hre.artifacts.readArtifact("NFTPVPVaultV1");
   const vaultCreationCodeHash = hre.ethers.keccak256(artifact.bytecode);
   const vaultData = hre.ethers.AbiCoder.defaultAbiCoder().encode(
-    ["address", "address", "address", "bytes32", "uint64", "uint256", "bytes"],
-    [router, guardian, coordinator, keyHash, subId, tokenPriceBnbPerToken, artifact.bytecode]
+    ["address", "address", "uint256", "bytes"],
+    [router, guardian, tokenPriceBnbPerToken, artifact.bytecode]
   );
 
   console.log("vaultCreationCodeHash:", vaultCreationCodeHash);

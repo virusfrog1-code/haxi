@@ -5,9 +5,9 @@
 The current BSC Testnet deployment used mock infrastructure for end-to-end validation:
 
 - `TaxToken` is a test `MockERC20`.
-- `MockVRFCoordinator` is a local test coordinator replacement.
+- Match settlement now uses hash commit-reveal instead of VRF.
 - `NFTPVPVaultV1`, `PvpEntryNFT`, and `NFTPVPVaultFactory` were deployed on chain `97`.
-- The deployed test flow covered minting, queue entry/exit, matching, mock VRF settlement, NFT burn, LossVault quota, BNB receipt split, and dividend claims.
+- The deployed test flow covered minting, queue entry/exit, matching, settlement, NFT burn, LossVault quota, BNB receipt split, and dividend claims.
 
 These mock contracts are not mainnet components and must not be reused for production.
 
@@ -29,12 +29,11 @@ Production launch requires real BSC mainnet infrastructure:
 
 - A real Flap Tax Token created through the Flap flow.
 - Real PancakeSwap router and WBNB addresses.
-- A real Chainlink VRF coordinator, key hash, and funded subscription.
 - A fixed `TOKEN_PRICE_BNB_PER_TOKEN` value.
 - An audited `NFTPVPVaultFactory` deployment.
 - Flap `vaultData` generated from the reviewed Vault creation code.
 
-The testnet `MockERC20` and `MockVRFCoordinator` must not be used on mainnet.
+The testnet `MockERC20` must not be used on mainnet.
 
 ## Flap Flow
 
@@ -57,7 +56,8 @@ The website should connect directly to the same deployed `NFTPVPVaultV1` that Fl
 
 - Use the deployed Vault ABI for reads and writes.
 - Read the deployed `PvpEntryNFT` address from `entryNft()`.
-- Use ERC20 approvals only for `mintNFT(tokenAmount)` and `enterQueue(tierId,nftId,betAmount)`.
+- Use ERC20 approvals only for `mintNFT(tokenAmount)` and `enterQueue(tierId,nftId,betAmount,seedCommitment)`.
+- Build `seedCommitment` as `keccak256(abi.encodePacked(user, secretSeed))`, then call `revealSeed(matchId, secretSeed)` after matching.
 - Do not ask users for ERC721 approval. The Vault locks and burns NFTs through `lockByVault` and `burnByVault`.
 - Show Flap and website users the same on-chain state because both frontends call the same Vault.
 

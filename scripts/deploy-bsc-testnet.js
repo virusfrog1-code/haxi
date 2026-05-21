@@ -31,15 +31,8 @@ async function main() {
   const taxToken = requireAddress("TAX_TOKEN");
   const pancakeRouter = requireAddress("PANCAKE_ROUTER");
   const wbnb = requireAddress("WBNB");
-  const vrfCoordinator = requireAddress("VRF_COORDINATOR");
-  const vrfSubId = BigInt(requireEnv("VRF_SUB_ID"));
-  const vrfKeyHash = requireEnv("VRF_KEY_HASH");
   const tokenPriceBnbPerToken = BigInt(process.env.TOKEN_PRICE_BNB_PER_TOKEN || "10000000000000");
   const guardian = process.env.GUARDIAN && process.env.GUARDIAN.trim() !== "" ? requireAddress("GUARDIAN") : hre.ethers.ZeroAddress;
-
-  if (!/^0x[0-9a-fA-F]{64}$/.test(vrfKeyHash)) {
-    throw new Error("VRF_KEY_HASH must be a bytes32 hex string");
-  }
 
   const [deployer] = await hre.ethers.getSigners();
   const router = await hre.ethers.getContractAt(
@@ -60,9 +53,6 @@ async function main() {
     pancakeRouter,
     deployer.address,
     guardian,
-    vrfCoordinator,
-    vrfKeyHash,
-    vrfSubId,
     tokenPriceBnbPerToken
   );
   await vault.waitForDeployment();
@@ -72,9 +62,6 @@ async function main() {
     deployer.address,
     pancakeRouter,
     guardian,
-    vrfCoordinator,
-    vrfKeyHash,
-    vrfSubId,
     tokenPriceBnbPerToken,
     vaultCreationCodeHash
   );
@@ -127,9 +114,6 @@ async function main() {
     NFTPVPVaultFactory: factoryAddress,
     PancakeRouter: pancakeRouter,
     WBNB: wbnb,
-    VRFCoordinator: vrfCoordinator,
-    VRFSubId: vrfSubId.toString(),
-    VRFKeyHash: vrfKeyHash,
     TokenPriceBnbPerToken: tokenPriceBnbPerToken.toString(),
     Guardian: guardian,
     vaultCreationCodeHash,
