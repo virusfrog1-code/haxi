@@ -1,0 +1,6 @@
+{
+  "name": "<FLAP_TOKEN_NAME>",
+  "symbol": "<FLAP_TOKEN_SYMBOL>",
+  "description": "<FLAP_TOKEN_NAME> (<FLAP_TOKEN_SYMBOL>) is a Flap TOKEN_TAXED_V3 launch connected to NFTPVPVaultV1 for NFT-holder dividends, PvP queue play, and LossVault rewards.",
+  "image": "ipfs://REPLACE_WITH_LOGO_CID"
+}
