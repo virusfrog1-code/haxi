@@ -6,7 +6,11 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "deploy:bsc-testnet": "hardhat run scripts/deploy-bsc-testnet.js --network bscTestnet"
+    "deploy:bsc-testnet": "hardhat run scripts/deploy-bsc-testnet.js --network bscTestnet",
+    "test:deployed:bsc-testnet": "hardhat run scripts/test-deployed-bsc-testnet.js --network bscTestnet",
+    "encode:flap-vault-data": "node scripts/encode-flap-vault-data.js",
+    "preflight:mainnet": "hardhat run scripts/preflight-bsc-mainnet.js --network bscMainnet",
+    "deploy:mainnet-factory": "hardhat run scripts/deploy-bsc-mainnet-factory.js --network bscMainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

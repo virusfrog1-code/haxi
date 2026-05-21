@@ -36,6 +36,8 @@ BNB received when no NFTs or no loss points exist is kept in `nftUndistributedBn
 
 `getTokenPriceBnb` currently uses a Pancake-compatible router spot quote. This is acceptable for BSC Testnet validation only. Before mainnet launch, replace it with TWAP, fixed valuation, or another manipulation-resistant pricing mechanism, otherwise LossVault 150% quota can be manipulated through price impact or oracle manipulation.
 
+Mainnet preflight and Factory deployment scripts intentionally fail unless `MAINNET_ORACLE_CONFIRMED=true` is set. Do not set that flag until the spot-quote TODO has been replaced by the reviewed mainnet pricing mechanism.
+
 ## Factory
 
 `NFTPVPVaultFactory` is provided as a separate Flap Custom Vault factory so the main Vault bytecode is not expanded further. It exposes:
@@ -79,9 +81,34 @@ Expected deployment output includes only public addresses:
 - `NFTPVPVaultFactory`
 - `deployments/bsc-testnet.json`
 
+## Mainnet / Flap / Website Preparation
+
+Mainnet deployment is not part of the default flow. The repository includes guardrail scripts and launch docs only:
+
+- `docs/MAINNET_FLAP_LAUNCH.md`
+- `docs/WEBSITE_INTEGRATION.md`
+- `scripts/encode-flap-vault-data.js`
+- `scripts/preflight-bsc-mainnet.js`
+- `scripts/deploy-bsc-mainnet-factory.js`
+
+Generate Flap `vaultData` after setting the public router and VRF environment values:
+
+```bash
+npm run encode:flap-vault-data
+```
+
+Run mainnet preflight before any Factory deployment:
+
+```bash
+npm run preflight:mainnet
+```
+
+Expected behavior before the oracle TODO is resolved: preflight fails and blocks deployment.
+
 ## Commands
 
 ```bash
 npx hardhat compile
 npm test
+npm run test:deployed:bsc-testnet
 ```

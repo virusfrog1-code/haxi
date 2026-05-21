@@ -20,11 +20,17 @@ module.exports = {
       url: process.env.BSC_TESTNET_RPC_URL || "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
       chainId: 97,
       accounts: deployerPrivateKey ? [deployerPrivateKey] : []
+    },
+    bscMainnet: {
+      url: process.env.BSC_MAINNET_RPC_URL || "",
+      chainId: 56,
+      accounts: deployerPrivateKey ? [deployerPrivateKey] : []
     }
   },
   etherscan: {
     apiKey: {
-      bscTestnet: process.env.BSCSCAN_API_KEY || ""
+      bscTestnet: process.env.BSCSCAN_API_KEY || "",
+      bsc: process.env.BSCSCAN_API_KEY || ""
     }
   }
 };
