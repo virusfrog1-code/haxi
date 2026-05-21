@@ -11,17 +11,17 @@ The current BSC Testnet deployment used mock infrastructure for end-to-end valid
 
 These mock contracts are not mainnet components and must not be reused for production.
 
-## Mainnet Blocker
+## Price Model
 
-**Do not deploy or enable this system on BSC mainnet until the pricing TODO is resolved.**
+`getTokenPriceBnb` now uses a fixed valuation configured as `tokenPriceBnbPerToken`, scaled to 18 decimals. This is the mainnet-safe alternative selected for the first Flap launch because LossVault quota no longer depends on a manipulable Pancake spot quote.
 
-`getTokenPriceBnb` currently uses a Pancake-compatible router spot quote. That is acceptable for testnet validation, but it is not safe for mainnet LossVault quota accounting. Before launch, replace it with one of:
+Operational requirements:
 
-- TWAP pricing.
-- Fixed valuation controlled by audited governance.
-- Another manipulation-resistant oracle or quote mechanism.
+- Choose `TOKEN_PRICE_BNB_PER_TOKEN` before launch.
+- Keep the value aligned with the intended token economics.
+- Use owner or Flap Guardian to update it if launch economics change.
 
-Until this is complete, `scripts/preflight-bsc-mainnet.js` and `scripts/deploy-bsc-mainnet-factory.js` intentionally block mainnet deployment unless `MAINNET_ORACLE_CONFIRMED=true` is set.
+Do not reintroduce router spot quotes for quota accounting. If market-following pricing is required later, replace the fixed valuation with a reviewed TWAP or another manipulation-resistant oracle.
 
 ## Real Mainnet Inputs
 
@@ -30,6 +30,7 @@ Production launch requires real BSC mainnet infrastructure:
 - A real Flap Tax Token created through the Flap flow.
 - Real PancakeSwap router and WBNB addresses.
 - A real Chainlink VRF coordinator, key hash, and funded subscription.
+- A fixed `TOKEN_PRICE_BNB_PER_TOKEN` value.
 - An audited `NFTPVPVaultFactory` deployment.
 - Flap `vaultData` generated from the reviewed Vault creation code.
 
@@ -37,7 +38,7 @@ The testnet `MockERC20` and `MockVRFCoordinator` must not be used on mainnet.
 
 ## Flap Flow
 
-1. Resolve the mainnet pricing TODO and pass mainnet preflight.
+1. Choose and review the fixed `TOKEN_PRICE_BNB_PER_TOKEN`, then pass mainnet preflight.
 2. Deploy the reviewed `NFTPVPVaultFactory` on BSC mainnet.
 3. Generate `vaultData`:
 

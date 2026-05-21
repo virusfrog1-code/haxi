@@ -45,6 +45,7 @@ async function main() {
     preflight.vrfCoordinator,
     preflight.vrfKeyHash,
     BigInt(preflight.vrfSubId),
+    BigInt(preflight.tokenPriceBnbPerToken),
     vaultCreationCodeHash
   );
   await factory.waitForDeployment();
@@ -61,6 +62,7 @@ async function main() {
     VRFCoordinator: preflight.vrfCoordinator,
     VRFSubId: preflight.vrfSubId.toString(),
     VRFKeyHash: preflight.vrfKeyHash,
+    TokenPriceBnbPerToken: preflight.tokenPriceBnbPerToken.toString(),
     Guardian: guardian,
     vaultCreationCodeHash,
     bytecodeSizes: {

@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const hre = require("hardhat");
 
-const ORACLE_TODO_TEXT = "getTokenPriceBnb";
+const PRICE_DOC_TEXT = "fixed valuation";
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -51,8 +51,8 @@ function checkOracleTodoDocs() {
   const launchDoc = fs.existsSync(launchDocPath) ? fs.readFileSync(launchDocPath, "utf8") : "";
   const combined = `${readme}\n${launchDoc}`;
 
-  if (!combined.includes(ORACLE_TODO_TEXT) || !combined.includes("TWAP")) {
-    throw new Error("Mainnet oracle TODO is missing from README/docs");
+  if (!combined.includes("getTokenPriceBnb") || !combined.toLowerCase().includes(PRICE_DOC_TEXT)) {
+    throw new Error("Mainnet fixed valuation warning is missing from README/docs");
   }
 }
 
@@ -77,21 +77,19 @@ async function runPreflight() {
     wbnb: requireAddress("WBNB"),
     vrfCoordinator: requireAddress("VRF_COORDINATOR"),
     vrfSubId: requireEnv("VRF_SUB_ID"),
-    vrfKeyHash: requireBytes32("VRF_KEY_HASH")
+    vrfKeyHash: requireBytes32("VRF_KEY_HASH"),
+    tokenPriceBnbPerToken: requireEnv("TOKEN_PRICE_BNB_PER_TOKEN")
   };
 
   if (BigInt(env.vrfSubId) < 0n || BigInt(env.vrfSubId) > 18446744073709551615n) {
     throw new Error("VRF_SUB_ID must fit uint64");
   }
+  if (BigInt(env.tokenPriceBnbPerToken) <= 0n) {
+    throw new Error("TOKEN_PRICE_BNB_PER_TOKEN must be greater than zero");
+  }
 
   const sizes = await checkBytecodeSizes();
   checkOracleTodoDocs();
-
-  if (process.env.MAINNET_ORACLE_CONFIRMED !== "true") {
-    throw new Error(
-      "MAINNET_ORACLE_CONFIRMED must be true before mainnet deployment. getTokenPriceBnb still uses a router spot quote and must be replaced with TWAP, fixed valuation, or another manipulation-resistant quote."
-    );
-  }
 
   await checkNetworkAndRouter(env);
 

@@ -34,6 +34,7 @@ async function main() {
   const vrfCoordinator = requireAddress("VRF_COORDINATOR");
   const vrfSubId = BigInt(requireEnv("VRF_SUB_ID"));
   const vrfKeyHash = requireEnv("VRF_KEY_HASH");
+  const tokenPriceBnbPerToken = BigInt(process.env.TOKEN_PRICE_BNB_PER_TOKEN || "10000000000000");
   const guardian = process.env.GUARDIAN && process.env.GUARDIAN.trim() !== "" ? requireAddress("GUARDIAN") : hre.ethers.ZeroAddress;
 
   if (!/^0x[0-9a-fA-F]{64}$/.test(vrfKeyHash)) {
@@ -61,7 +62,8 @@ async function main() {
     guardian,
     vrfCoordinator,
     vrfKeyHash,
-    vrfSubId
+    vrfSubId,
+    tokenPriceBnbPerToken
   );
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
@@ -73,6 +75,7 @@ async function main() {
     vrfCoordinator,
     vrfKeyHash,
     vrfSubId,
+    tokenPriceBnbPerToken,
     vaultCreationCodeHash
   );
   await factory.waitForDeployment();
@@ -87,7 +90,8 @@ async function main() {
     vaultNft: await vault.entryNft(),
     vaultRouter: await vault.router(),
     vaultOwner: await vault.owner(),
-    vaultGuardian: await vault.guardianOverride()
+    vaultGuardian: await vault.guardianOverride(),
+    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken()
   };
 
   if (checks.nftVault.toLowerCase() !== vaultAddress.toLowerCase()) {
@@ -108,6 +112,9 @@ async function main() {
   if (checks.vaultGuardian.toLowerCase() !== guardian.toLowerCase()) {
     throw new Error("Deployment check failed: Vault guardian mismatch");
   }
+  if (checks.vaultTokenPriceBnbPerToken !== tokenPriceBnbPerToken) {
+    throw new Error("Deployment check failed: Vault token price mismatch");
+  }
 
   const deployment = {
     network: "bscTestnet",
@@ -123,6 +130,7 @@ async function main() {
     VRFCoordinator: vrfCoordinator,
     VRFSubId: vrfSubId.toString(),
     VRFKeyHash: vrfKeyHash,
+    TokenPriceBnbPerToken: tokenPriceBnbPerToken.toString(),
     Guardian: guardian,
     vaultCreationCodeHash,
     checks

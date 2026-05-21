@@ -11,7 +11,6 @@ import {PvpEntryNFT} from "./PvpEntryNFT.sol";
 
 interface IPancakeLikeRouter {
     function WETH() external view returns (address);
-    function getAmountsOut(uint256 amountIn, address[] calldata path) external view returns (uint256[] memory amounts);
     function swapExactTokensForETHSupportingFeeOnTransferTokens(
         uint256 amountIn,
         uint256 amountOutMin,
@@ -50,6 +49,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     uint64 public vrfSubId;
     uint16 public vrfRequestConfirmations = 3;
     uint32 public vrfCallbackGasLimit = 300_000;
+    uint256 public tokenPriceBnbPerToken;
 
     uint256 public nftMintTokenBuffer;
     uint256 public lossMintTokenBuffer;
@@ -141,6 +141,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     event RouterUpdated(address indexed oldRouter, address indexed newRouter);
     event VrfConfigUpdated(address indexed coordinator, bytes32 keyHash, uint64 subId, uint16 confirmations, uint32 callbackGasLimit);
     event GuardianOverrideUpdated(address indexed oldGuardian, address indexed newGuardian);
+    event TokenPriceBnbPerTokenUpdated(uint256 oldPrice, uint256 newPrice);
 
     error ZeroAddress();
     error NotOwnerOrGuardian();
@@ -162,6 +163,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     error InsufficientExcessBNB();
     error SlippageExceeded();
     error DeadlineExpired();
+    error InvalidPrice();
 
     modifier onlyOwnerOrGuardian() {
         if (msg.sender != owner() && !_isGuardian(msg.sender)) revert NotOwnerOrGuardian();
@@ -175,15 +177,18 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         address guardianOverride_,
         address vrfCoordinator_,
         bytes32 vrfKeyHash_,
-        uint64 vrfSubId_
+        uint64 vrfSubId_,
+        uint256 tokenPriceBnbPerToken_
     ) Ownable(initialOwner_) {
         if (token_ == address(0) || router_ == address(0) || initialOwner_ == address(0)) revert ZeroAddress();
+        if (tokenPriceBnbPerToken_ == 0) revert InvalidPrice();
         token = IERC20(token_);
         router = IPancakeLikeRouter(router_);
         guardianOverride = guardianOverride_;
         vrfCoordinator = vrfCoordinator_;
         vrfKeyHash = vrfKeyHash_;
         vrfSubId = vrfSubId_;
+        tokenPriceBnbPerToken = tokenPriceBnbPerToken_;
         entryNft = new PvpEntryNFT("PVP Entry NFT", "PVPNFT", address(this), initialOwner_);
     }
 
@@ -405,6 +410,13 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         emit GuardianOverrideUpdated(oldGuardian, guardian);
     }
 
+    function setTokenPriceBnbPerToken(uint256 newPrice) external onlyOwnerOrGuardian {
+        if (newPrice == 0) revert InvalidPrice();
+        uint256 oldPrice = tokenPriceBnbPerToken;
+        tokenPriceBnbPerToken = newPrice;
+        emit TokenPriceBnbPerTokenUpdated(oldPrice, newPrice);
+    }
+
     function getStats() external view returns (Stats memory stats) {
         stats = Stats({
             tokenAddress: address(token),
@@ -538,14 +550,8 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         if (gained < minOut) revert SlippageExceeded();
     }
 
-    // Mainnet deployments should replace this spot quote with TWAP or another manipulation-resistant oracle;
-    // a single router quote can be manipulated and would affect the 150% LossVault quota.
     function getTokenPriceBnb(uint256 amount) public view returns (uint256) {
-        address[] memory path = new address[](2);
-        path[0] = address(token);
-        path[1] = router.WETH();
-        uint256[] memory amounts = router.getAmountsOut(amount, path);
-        return amounts[amounts.length - 1];
+        return amount * tokenPriceBnbPerToken / 1 ether;
     }
 
     function _addNftBnb(uint256 amount) private {

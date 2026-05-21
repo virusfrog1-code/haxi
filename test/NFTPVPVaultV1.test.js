@@ -5,6 +5,7 @@ describe("NFTPVPVaultV1", function () {
   const NFT_PRICE = ethers.parseEther("100000");
   const BET = ethers.parseEther("1000");
   const RATE = ethers.parseUnits("0.00001", 18);
+  const TOKEN_PRICE_BNB_PER_TOKEN = RATE;
   const DEAD = "0x000000000000000000000000000000000000dEaD";
 
   async function deployFixture() {
@@ -28,7 +29,8 @@ describe("NFTPVPVaultV1", function () {
       guardian.address,
       await vrf.getAddress(),
       ethers.ZeroHash,
-      0
+      0,
+      TOKEN_PRICE_BNB_PER_TOKEN
     );
 
     const nft = await ethers.getContractAt("PvpEntryNFT", await vault.entryNft());
@@ -250,6 +252,22 @@ describe("NFTPVPVaultV1", function () {
     await vrf.fulfill(await vault.getAddress(), 1, 0);
 
     expect(await vault.lossQuotaOf(bob.address)).to.equal(ethers.parseEther("0.015"));
+  });
+
+  it("uses fixed token price for LossVault quota instead of router spot quote", async function () {
+    const { owner, alice, bob, vault, vrf } = await deployFixture();
+    await mintOne(vault, alice);
+    await mintOne(vault, bob);
+
+    await expect(vault.connect(owner).setTokenPriceBnbPerToken(ethers.parseUnits("0.00002", 18)))
+      .to.emit(vault, "TokenPriceBnbPerTokenUpdated")
+      .withArgs(TOKEN_PRICE_BNB_PER_TOKEN, ethers.parseUnits("0.00002", 18));
+
+    await vault.connect(alice).enterQueue(1, 1, BET);
+    await vault.connect(bob).enterQueue(1, 2, BET);
+    await vrf.fulfill(await vault.getAddress(), 1, 0);
+
+    expect(await vault.lossQuotaOf(bob.address)).to.equal(ethers.parseEther("0.03"));
   });
 
   it("receive() splits BNB 50/50 into NFT pool and LossVault pending buffer", async function () {
@@ -518,16 +536,25 @@ describe("NFTPVPVaultV1", function () {
       await vrf.getAddress(),
       ethers.ZeroHash,
       0,
+      TOKEN_PRICE_BNB_PER_TOKEN,
       approvedHash
     );
 
     const schema = await factory.vaultDataSchema();
-    expect(schema.fields.length).to.equal(6);
+    expect(schema.fields.length).to.equal(7);
 
     const coder = ethers.AbiCoder.defaultAbiCoder();
     const vaultData = coder.encode(
-      ["address", "address", "address", "bytes32", "uint64", "bytes"],
-      [await router.getAddress(), guardian.address, await vrf.getAddress(), ethers.ZeroHash, 0, Vault.bytecode]
+      ["address", "address", "address", "bytes32", "uint64", "uint256", "bytes"],
+      [
+        await router.getAddress(),
+        guardian.address,
+        await vrf.getAddress(),
+        ethers.ZeroHash,
+        0,
+        TOKEN_PRICE_BNB_PER_TOKEN,
+        Vault.bytecode
+      ]
     );
     const tx = await factory.createVault(await token.getAddress(), ethers.ZeroAddress, owner.address, vaultData);
     const receipt = await tx.wait();
@@ -543,6 +570,7 @@ describe("NFTPVPVaultV1", function () {
     const createdVault = await ethers.getContractAt("NFTPVPVaultV1", vaultAddress);
     expect(await createdVault.owner()).to.equal(owner.address);
     expect(await createdVault.guardianOverride()).to.equal(guardian.address);
+    expect(await createdVault.tokenPriceBnbPerToken()).to.equal(TOKEN_PRICE_BNB_PER_TOKEN);
   });
 
   it("factory rejects non-approved vault creation code", async function () {
@@ -556,13 +584,14 @@ describe("NFTPVPVaultV1", function () {
       await vrf.getAddress(),
       ethers.ZeroHash,
       0,
+      TOKEN_PRICE_BNB_PER_TOKEN,
       ethers.keccak256(Vault.bytecode)
     );
 
     const coder = ethers.AbiCoder.defaultAbiCoder();
     const badVaultData = coder.encode(
-      ["address", "address", "address", "bytes32", "uint64", "bytes"],
-      [await router.getAddress(), guardian.address, await vrf.getAddress(), ethers.ZeroHash, 0, "0x6000"]
+      ["address", "address", "address", "bytes32", "uint64", "uint256", "bytes"],
+      [await router.getAddress(), guardian.address, await vrf.getAddress(), ethers.ZeroHash, 0, TOKEN_PRICE_BNB_PER_TOKEN, "0x6000"]
     );
 
     await expect(

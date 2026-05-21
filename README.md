@@ -4,7 +4,7 @@ Solidity 0.8.20 Hardhat project for `NFTPVPVaultV1`, `PvpEntryNFT`, and a Flap-c
 
 ## Testnet-Only Status
 
-**BSC Testnet only. Do not deploy this code to mainnet as-is.** The deployment script is restricted to BSC Testnet (`chainId 97`), and `getTokenPriceBnb` still uses a router spot quote that is not safe for mainnet quota accounting.
+**BSC Testnet deployment has been validated. Mainnet deployment should still be treated as a staged launch and run the preflight scripts first.** The default deployment script is restricted to BSC Testnet (`chainId 97`).
 
 ## Transfer-Tax Token Assumption
 
@@ -32,11 +32,11 @@ Router BNB returned during `convertMintBuffers` is guarded by the Vault's intern
 
 BNB received when no NFTs or no loss points exist is kept in `nftUndistributedBnb` or `lossUndistributedBnb`. Both are included in reserved accounting and cannot be removed by `rescueExcessBNB`.
 
-## Price Quote Warning
+## Price Quote Model
 
-`getTokenPriceBnb` currently uses a Pancake-compatible router spot quote. This is acceptable for BSC Testnet validation only. Before mainnet launch, replace it with TWAP, fixed valuation, or another manipulation-resistant pricing mechanism, otherwise LossVault 150% quota can be manipulated through price impact or oracle manipulation.
+`getTokenPriceBnb` uses a fixed valuation configured as `tokenPriceBnbPerToken`, scaled to 18 decimals. This removes the router spot-quote manipulation risk for LossVault 150% quota accounting. The tradeoff is operational: owner or Flap Guardian must keep the fixed valuation aligned with the intended launch economics.
 
-Mainnet preflight and Factory deployment scripts intentionally fail unless `MAINNET_ORACLE_CONFIRMED=true` is set. Do not set that flag until the spot-quote TODO has been replaced by the reviewed mainnet pricing mechanism.
+Do not use Pancake router spot quotes for quota accounting on mainnet. If the project later needs market-following prices, replace the fixed valuation with a reviewed TWAP or another manipulation-resistant oracle.
 
 ## Factory
 
@@ -47,7 +47,7 @@ Mainnet preflight and Factory deployment scripts intentionally fail unless `MAIN
 - `vaultDataSchema()`
 - `factorySpecVersion()`
 
-The factory expects `vaultData` to include the `NFTPVPVaultV1` creation code and deploys vaults with `CREATE`. It verifies the creation code against `vaultCreationCodeHash`, so it cannot deploy arbitrary unapproved creation code. This keeps Factory runtime bytecode below the EIP-170 limit instead of embedding the Vault creation code directly into Factory runtime or storing it in Factory storage.
+The factory expects `vaultData` to include the fixed token valuation and the `NFTPVPVaultV1` creation code, then deploys vaults with `CREATE`. It verifies the creation code against `vaultCreationCodeHash`, so it cannot deploy arbitrary unapproved creation code. This keeps Factory runtime bytecode below the EIP-170 limit instead of embedding the Vault creation code directly into Factory runtime or storing it in Factory storage.
 
 ## Replit BSC Testnet Deployment
 
@@ -62,6 +62,7 @@ Set these Replit Secrets before running deployment:
 - `VRF_COORDINATOR`
 - `VRF_SUB_ID`
 - `VRF_KEY_HASH`
+- `TOKEN_PRICE_BNB_PER_TOKEN` optional on testnet, defaults to `10000000000000` (`0.00001 BNB` per token)
 - `GUARDIAN` optional, defaults to zero address
 
 The deployment script never prints the private key. It deploys `NFTPVPVaultV1` and `NFTPVPVaultFactory`, checks that `PvpEntryNFT.vault()` points to the deployed Vault, checks Vault token/NFT/router/owner/guardian values, then writes `deployments/bsc-testnet.json`.
@@ -97,13 +98,13 @@ Generate Flap `vaultData` after setting the public router and VRF environment va
 npm run encode:flap-vault-data
 ```
 
-Run mainnet preflight before any Factory deployment:
+Run mainnet preflight before any Factory deployment. It requires `TOKEN_PRICE_BNB_PER_TOKEN` and checks chain `56`, router/WBNB consistency, bytecode size, and fixed valuation docs:
 
 ```bash
 npm run preflight:mainnet
 ```
 
-Expected behavior before the oracle TODO is resolved: preflight fails and blocks deployment.
+Expected behavior: preflight passes only when all mainnet environment values and the fixed valuation are explicitly set.
 
 ## Commands
 

@@ -33,7 +33,8 @@ async function main() {
     vaultNft: await vault.entryNft(),
     vaultRouter: await vault.router(),
     vaultOwner: await vault.owner(),
-    vaultGuardian: await vault.guardianOverride()
+    vaultGuardian: await vault.guardianOverride(),
+    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken()
   };
 
   if (checks.nftVault.toLowerCase() !== deployment.NFTPVPVaultV1.toLowerCase()) {
@@ -53,6 +54,9 @@ async function main() {
   }
   if (checks.vaultGuardian.toLowerCase() !== deployment.Guardian.toLowerCase()) {
     throw new Error("Vault guardian mismatch");
+  }
+  if (deployment.TokenPriceBnbPerToken && checks.vaultTokenPriceBnbPerToken.toString() !== deployment.TokenPriceBnbPerToken) {
+    throw new Error("Vault token price mismatch");
   }
 
   console.log("BSC testnet deployment checks passed");
