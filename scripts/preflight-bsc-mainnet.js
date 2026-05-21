@@ -21,10 +21,16 @@ function requireEnvs(names) {
 
 function requireAddress(name) {
   const value = requireEnv(name);
+  if (hre.ethers.isAddress(value)) {
+    return hre.ethers.getAddress(value);
+  }
+  if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    return hre.ethers.getAddress(value.toLowerCase());
+  }
   if (!hre.ethers.isAddress(value)) {
     throw new Error(`${name} must be a valid address`);
   }
-  return value;
+  return hre.ethers.getAddress(value);
 }
 
 function requireBytes32(name) {
