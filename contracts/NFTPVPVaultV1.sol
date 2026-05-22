@@ -38,9 +38,8 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant BPS_DENOMINATOR = 10_000;
-    uint256 public constant NFT_PRICE = 50_000 ether;
+    uint256 public constant NFT_PRICE = 100_000 ether;
     uint256 public constant MAX_BET_AMOUNT = 2_000_000 ether;
-    uint8 public constant MAX_NFT_STAKE = 40;
     uint256 private constant MAGNITUDE = 1e36;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
@@ -73,33 +72,22 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     uint256 public accLossBnbPerQuota;
     uint256 public totalLossQuota;
 
-    enum StakeMode {
-        TOKEN,
-        NFT
-    }
-
     struct Tier {
         uint256 tokenAmount;
-        uint8 nftCount;
         bool enabled;
     }
 
     struct QueueEntry {
         address player;
-        StakeMode mode;
-        uint8 nftCount;
-        uint256[40] nftIds;
+        uint256 nftId;
         uint256 stakeAmount;
     }
 
     struct MatchInfo {
         address playerA;
         address playerB;
-        StakeMode mode;
-        uint8 nftCountA;
-        uint8 nftCountB;
-        uint256[40] nftIdsA;
-        uint256[40] nftIdsB;
+        uint256 nftIdA;
+        uint256 nftIdB;
         uint256 stakeAmount;
         uint256 vrfRequestId;
         uint256 randomWord;
@@ -133,12 +121,12 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     }
 
     mapping(uint256 => Tier) public tiers;
-    mapping(uint256 => mapping(uint8 => QueueEntry)) private _queueOfTier;
+    mapping(uint256 => QueueEntry) private _queueOfTier;
     mapping(uint256 => MatchInfo) public matches;
     mapping(uint256 => uint256) public matchOfRequest;
     mapping(uint256 => bool) public nftInActiveGame;
     mapping(address => bool) public playerInActiveGame;
-    mapping(address => uint256) private _nftRewardWeightOf;
+    mapping(address => uint256) private _nftWeightOf;
 
     mapping(address => uint256) private _nftRewardDebt;
     mapping(address => uint256) private _nftCredit;
@@ -152,19 +140,19 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     bool private _converting;
 
     event NftMinted(address indexed user, uint256 quantity, uint256 requestedTokenAmount, uint256 actualReceived);
-    event QueueEntered(uint256 indexed tierId, address indexed user, StakeMode mode, uint256 stakeAmount, uint256 nftCount);
-    event QueueLeft(uint256 indexed tierId, address indexed user, StakeMode mode, uint256 stakeAmount, uint256 nftCount);
+    event QueueEntered(uint256 indexed tierId, address indexed user, uint256 nftId, uint256 stakeAmount);
+    event QueueLeft(uint256 indexed tierId, address indexed user, uint256 nftId, uint256 stakeAmount);
     event MatchRequested(uint256 indexed matchId, uint256 indexed tierId, address indexed playerA, address playerB);
     event RandomnessRequested(uint256 indexed matchId, uint256 indexed requestId);
     event RandomnessFulfilled(uint256 indexed matchId, uint256 indexed requestId, uint256 randomWord);
-    event MatchSettled(uint256 indexed matchId, address indexed winner, address indexed loser, StakeMode mode, uint256 stakeAmount);
-    event MatchCancelled(uint256 indexed matchId, address indexed playerA, address indexed playerB, StakeMode mode, uint256 stakeAmount);
+    event MatchSettled(uint256 indexed matchId, address indexed winner, address indexed loser, uint256 stakeAmount, uint256 burnedNftId);
+    event MatchCancelled(uint256 indexed matchId, address indexed playerA, address indexed playerB, uint256 stakeAmount);
     event MintBuffersConverted(uint256 nftTokens, uint256 lossTokens, uint256 nftBnb, uint256 lossBnb);
     event NftDividendsClaimed(address indexed user, uint256 amount);
     event LossDividendsClaimed(address indexed user, uint256 amount);
     event BnbReceived(address indexed sender, uint256 amount, uint256 nftAmount, uint256 lossAmount);
     event RescueExcessBNB(address indexed to, uint256 amount);
-    event TierUpdated(uint256 indexed tierId, uint256 tokenAmount, uint8 nftCount, bool enabled);
+    event TierUpdated(uint256 indexed tierId, uint256 tokenAmount, bool enabled);
     event RouterUpdated(address indexed oldRouter, address indexed newRouter);
     event GuardianOverrideUpdated(address indexed oldGuardian, address indexed newGuardian);
     event TokenPriceBnbPerTokenUpdated(uint256 oldPrice, uint256 newPrice);
@@ -226,12 +214,11 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         vrfRequestConfirmations = vrfRequestConfirmations_;
         entryNft = new PvpEntryNFT("PVP Entry NFT", "PVPNFT", address(this), initialOwner_);
         schemaHelper = new NFTPVPVaultV1SchemaHelper();
-        _setTier(0, 50_000 ether, 1, true);
-        _setTier(1, 150_000 ether, 3, true);
-        _setTier(2, 250_000 ether, 5, true);
-        _setTier(3, 500_000 ether, 10, true);
-        _setTier(4, 1_000_000 ether, 20, true);
-        _setTier(5, 2_000_000 ether, 40, true);
+        _setTier(0, 100_000 ether, true);
+        _setTier(1, 300_000 ether, true);
+        _setTier(2, 500_000 ether, true);
+        _setTier(3, 1_000_000 ether, true);
+        _setTier(4, 2_000_000 ether, true);
     }
 
     receive() external payable {
@@ -275,86 +262,45 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         emit NftMinted(minter, quantity, tokenAmount, actualReceived);
     }
 
-    function mergeBaseNFTs(uint256[] calldata tokenIds) external nonReentrant returns (uint256 tokenId) {
-        tokenId = entryNft.mergeBaseNFTsByVault(msg.sender, tokenIds);
-        _indexPendingNftBnb();
-    }
-
-    function enterTokenQueue(uint256 tierId, uint256 tokenAmount) external nonReentrant {
+    function enterQueue(uint256 tierId, uint256 nftId, uint256 tokenAmount) external nonReentrant {
         Tier memory tier = tiers[tierId];
         if (!tier.enabled) revert InvalidTier();
         if (tokenAmount != tier.tokenAmount || tokenAmount > MAX_BET_AMOUNT) revert InvalidBetAmount();
         if (playerInActiveGame[msg.sender]) revert PlayerAlreadyActive();
+        if (entryNft.ownerOf(nftId) != msg.sender) revert NotNftOwner();
+        if (nftInActiveGame[nftId]) revert NftAlreadyActive();
 
         uint256 actualReceived = _pullTokens(msg.sender, tokenAmount);
         if (actualReceived != tokenAmount) revert InvalidBetAmount();
-        playerInActiveGame[msg.sender] = true;
 
-        uint256[40] memory emptyNfts;
-        _enterQueue(tierId, StakeMode.TOKEN, 0, emptyNfts, tokenAmount);
+        entryNft.lockByVault(nftId);
+        nftInActiveGame[nftId] = true;
+        playerInActiveGame[msg.sender] = true;
+        _enterQueue(tierId, nftId, tokenAmount);
     }
 
-    function enterNftQueue(uint256 tierId, uint256[] calldata nftIds) external nonReentrant {
-        Tier memory tier = tiers[tierId];
-        if (!tier.enabled) revert InvalidTier();
-        if (nftIds.length == 0 || nftIds.length > MAX_NFT_STAKE) revert InvalidBetAmount();
-        if (tier.tokenAmount > MAX_BET_AMOUNT) revert InvalidBetAmount();
-        if (playerInActiveGame[msg.sender]) revert PlayerAlreadyActive();
-
-        uint256[40] memory packedNfts;
-        uint256 units;
-        for (uint256 i = 0; i < nftIds.length; i++) {
-            uint256 nftId = nftIds[i];
-            if (entryNft.ownerOf(nftId) != msg.sender) revert NotNftOwner();
-            if (nftInActiveGame[nftId]) revert NftAlreadyActive();
-            for (uint256 j = 0; j < i; j++) {
-                if (packedNfts[j] == nftId) revert NftAlreadyActive();
-            }
-            entryNft.lockByVault(nftId);
-            nftInActiveGame[nftId] = true;
-            packedNfts[i] = nftId;
-            units += entryNft.nftBaseUnits(nftId);
-        }
-        if (units != tier.nftCount) revert InvalidBetAmount();
-        playerInActiveGame[msg.sender] = true;
-
-        _enterQueue(tierId, StakeMode.NFT, uint8(nftIds.length), packedNfts, tier.tokenAmount);
-    }
-
-    function _enterQueue(
-        uint256 tierId,
-        StakeMode mode,
-        uint8 nftCount,
-        uint256[40] memory nftIds,
-        uint256 stakeAmount
-    ) private {
-        QueueEntry storage queued = _queueOfTier[tierId][uint8(mode)];
+    function _enterQueue(uint256 tierId, uint256 nftId, uint256 stakeAmount) private {
+        QueueEntry storage queued = _queueOfTier[tierId];
         if (queued.player == msg.sender) revert QueueOccupied();
 
         if (queued.player == address(0)) {
             queued.player = msg.sender;
-            queued.mode = mode;
-            queued.nftCount = nftCount;
-            queued.nftIds = nftIds;
+            queued.nftId = nftId;
             queued.stakeAmount = stakeAmount;
-            emit QueueEntered(tierId, msg.sender, mode, stakeAmount, nftCount);
+            emit QueueEntered(tierId, msg.sender, nftId, stakeAmount);
             return;
         }
 
         address playerA = queued.player;
-        uint8 queuedNftCount = queued.nftCount;
-        uint256[40] memory queuedNfts = queued.nftIds;
+        uint256 nftIdA = queued.nftId;
         uint256 queuedStakeAmount = queued.stakeAmount;
-        delete _queueOfTier[tierId][uint8(mode)];
+        delete _queueOfTier[tierId];
         uint256 matchId = nextMatchId++;
         MatchInfo storage matchInfo = matches[matchId];
         matchInfo.playerA = playerA;
         matchInfo.playerB = msg.sender;
-        matchInfo.mode = mode;
-        matchInfo.nftCountA = queuedNftCount;
-        matchInfo.nftCountB = nftCount;
-        matchInfo.nftIdsA = queuedNfts;
-        matchInfo.nftIdsB = nftIds;
+        matchInfo.nftIdA = nftIdA;
+        matchInfo.nftIdB = nftId;
         matchInfo.stakeAmount = queuedStakeAmount;
         matchInfo.createdAt = block.timestamp;
         matchInfo.vrfRequestId = _requestRandomness(matchId);
@@ -363,23 +309,15 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     }
 
     function leaveQueue(uint256 tierId) external nonReentrant {
-        QueueEntry memory queued = _queueOfTier[tierId][uint8(StakeMode.TOKEN)];
-        uint8 modeKey = uint8(StakeMode.TOKEN);
-        if (queued.player != msg.sender) {
-            queued = _queueOfTier[tierId][uint8(StakeMode.NFT)];
-            modeKey = uint8(StakeMode.NFT);
-        }
+        QueueEntry memory queued = _queueOfTier[tierId];
         if (queued.player == address(0)) revert NoQueuedEntry();
         if (queued.player != msg.sender) revert NotQueuedPlayer();
-        delete _queueOfTier[tierId][modeKey];
+        delete _queueOfTier[tierId];
         playerInActiveGame[msg.sender] = false;
-        if (queued.mode == StakeMode.TOKEN) {
-            token.safeTransfer(msg.sender, queued.stakeAmount);
-        } else {
-            _unlockNfts(queued.nftIds, queued.nftCount);
-            _clearNftsActive(queued.nftIds, queued.nftCount);
-        }
-        emit QueueLeft(tierId, msg.sender, queued.mode, queued.stakeAmount, queued.nftCount);
+        nftInActiveGame[queued.nftId] = false;
+        entryNft.unlockByVault(queued.nftId);
+        token.safeTransfer(msg.sender, queued.stakeAmount);
+        emit QueueLeft(tierId, msg.sender, queued.nftId, queued.stakeAmount);
     }
 
     function rawFulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) external {
@@ -412,19 +350,14 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         }
         matchInfo.settled = true;
 
-        _clearActive(matchInfo.playerA);
-        _clearActive(matchInfo.playerB);
-        if (matchInfo.mode == StakeMode.TOKEN) {
-            token.safeTransfer(matchInfo.playerA, matchInfo.stakeAmount);
-            token.safeTransfer(matchInfo.playerB, matchInfo.stakeAmount);
-        } else {
-            _unlockNfts(matchInfo.nftIdsA, matchInfo.nftCountA);
-            _unlockNfts(matchInfo.nftIdsB, matchInfo.nftCountB);
-            _clearNftsActive(matchInfo.nftIdsA, matchInfo.nftCountA);
-            _clearNftsActive(matchInfo.nftIdsB, matchInfo.nftCountB);
-        }
+        _clearActive(matchInfo.playerA, matchInfo.nftIdA);
+        _clearActive(matchInfo.playerB, matchInfo.nftIdB);
+        entryNft.unlockByVault(matchInfo.nftIdA);
+        entryNft.unlockByVault(matchInfo.nftIdB);
+        token.safeTransfer(matchInfo.playerA, matchInfo.stakeAmount);
+        token.safeTransfer(matchInfo.playerB, matchInfo.stakeAmount);
 
-        emit MatchCancelled(matchId, matchInfo.playerA, matchInfo.playerB, matchInfo.mode, matchInfo.stakeAmount);
+        emit MatchCancelled(matchId, matchInfo.playerA, matchInfo.playerB, matchInfo.stakeAmount);
     }
 
     function convertMintBuffers(uint256 minNftBnbOut, uint256 minLossBnbOut, uint256 deadline)
@@ -500,21 +433,21 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         return address(this).balance > reserved ? address(this).balance - reserved : 0;
     }
 
-    function onNftBalanceChange(address from, address to, uint256 rewardWeight) external {
+    function onNftBalanceChange(address from, address to) external {
         if (msg.sender != address(entryNft)) revert NotNftContract();
         if (from == to) return;
         if (from != address(0)) {
             _settleNftAccount(from);
-            _nftRewardWeightOf[from] -= rewardWeight;
+            _nftWeightOf[from] -= 1;
         }
         if (to != address(0)) {
             _settleNftAccount(to);
-            _nftRewardWeightOf[to] += rewardWeight;
+            _nftWeightOf[to] += 1;
         }
     }
 
-    function setTier(uint256 tierId, uint256 tokenAmount, uint8 nftCount, bool enabled) external onlyOwnerOrGuardian {
-        _setTier(tierId, tokenAmount, nftCount, enabled);
+    function setTier(uint256 tierId, uint256 tokenAmount, bool enabled) external onlyOwnerOrGuardian {
+        _setTier(tierId, tokenAmount, enabled);
     }
 
     function setRouter(address router_) external onlyOwnerOrGuardian {
@@ -572,7 +505,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     }
 
     function pendingNftDividends(address user) public view returns (uint256) {
-        uint256 accumulated = _nftRewardWeightOf[user] * accNftBnbPerShare / MAGNITUDE;
+        uint256 accumulated = _nftWeightOf[user] * accNftBnbPerShare / MAGNITUDE;
         uint256 debt = _nftRewardDebt[user];
         uint256 pending = accumulated > debt ? accumulated - debt : 0;
         return _nftCredit[user] + pending;
@@ -587,29 +520,9 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         return amount > quota ? quota : amount;
     }
 
-    function nftLevel(uint256 tokenId) external view returns (uint8) {
-        return entryNft.nftLevel(tokenId);
-    }
-
-    function nftType(uint256 tokenId) external view returns (uint8) {
-        return entryNft.nftType(tokenId);
-    }
-
-    function nftRewardWeight(uint256 tokenId) external view returns (uint256) {
-        return entryNft.nftRewardWeight(tokenId);
-    }
-
-    function nftBaseUnits(uint256 tokenId) external view returns (uint256) {
-        return entryNft.nftBaseUnits(tokenId);
-    }
-
-    function isVpnEligible(uint256 tokenId) external view returns (bool) {
-        return entryNft.isVpnEligible(tokenId);
-    }
-
     function description() public view override returns (string memory) {
         return string.concat(
-            unicode"NFT PVP 双模式分红金库。当前存活 NFT ",
+            unicode"NFT PVP 分红金库。当前存活 NFT ",
             _toString(entryNft.activeSupply()),
             unicode"，NFT 分红池 BNB ",
             _toString(nftReservedBnb),
@@ -619,7 +532,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
             _toString(nftUndistributedBnb),
             unicode"，LossVault 未分配 BNB ",
             _toString(lossUndistributedBnb),
-            unicode"。基础 NFT 铸造价格为 50,000 Token；10 张基础 NFT 可合成 1 张高级 NFT，高级 NFT 拥有 12 张基础 NFT 分红权重和永久 VPN 权益。PVP 使用 Chainlink VRF 自动开奖，owner / guardian 不能手动指定赢家。交易税应为 4%，其中 50% 分配给 NFT 持有人，50% 进入 LossVault，分红资产为 BNB。getTokenPriceBnb 当前仅为测试网/预上线使用的 router spot quote，主网正式生产前必须替换为 TWAP / 固定估值 / 抗操纵报价。"
+            unicode"。用户每消耗 100,000 Token 可铸造 1 张 NFT，持有 NFT 才能质押 Token + 1 张 NFT 参与 PVP。PVP 使用 Chainlink VRF 自动开奖，owner / guardian 不能手动指定赢家。胜者获得输家 70% Token，15% Token 销毁，15% Token 进入 LossVault，输家 NFT 被销毁。交易税应为 4%，其中 50% 分配给 NFT 持有人，50% 进入 LossVault，分红资产为 BNB。LossVault 是最高额度分红池，不是保证返还。getTokenPriceBnb 当前仅为测试网/预上线使用的 router spot quote，主网正式生产前必须替换为 TWAP / 固定估值 / 抗操纵报价。"
         );
     }
 
@@ -657,32 +570,26 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
         bool aWins = winner == matchInfo.playerA;
         address loser = aWins ? matchInfo.playerB : matchInfo.playerA;
-        uint256[40] memory winnerNfts = aWins ? matchInfo.nftIdsA : matchInfo.nftIdsB;
-        uint256[40] memory loserNfts = aWins ? matchInfo.nftIdsB : matchInfo.nftIdsA;
-        uint8 winnerNftCount = aWins ? matchInfo.nftCountA : matchInfo.nftCountB;
-        uint8 loserNftCount = aWins ? matchInfo.nftCountB : matchInfo.nftCountA;
+        uint256 winnerNftId = aWins ? matchInfo.nftIdA : matchInfo.nftIdB;
+        uint256 loserNftId = aWins ? matchInfo.nftIdB : matchInfo.nftIdA;
         uint256 stakeAmount = matchInfo.stakeAmount;
 
-        if (matchInfo.mode == StakeMode.TOKEN) {
-            uint256 winnerPayout = stakeAmount + (stakeAmount * 7_000 / BPS_DENOMINATOR);
-            uint256 burnAmount = stakeAmount * 1_500 / BPS_DENOMINATOR;
-            uint256 lossBufferAmount = stakeAmount - (winnerPayout - stakeAmount) - burnAmount;
+        uint256 winnerPayout = stakeAmount + (stakeAmount * 7_000 / BPS_DENOMINATOR);
+        uint256 burnAmount = stakeAmount * 1_500 / BPS_DENOMINATOR;
+        uint256 lossBufferAmount = stakeAmount - (winnerPayout - stakeAmount) - burnAmount;
 
-            token.safeTransfer(winner, winnerPayout);
-            _sendToDead(burnAmount);
-            pvpLossTokenBuffer += lossBufferAmount;
-        } else {
-            _unlockNfts(winnerNfts, winnerNftCount);
-            _transferNfts(loser, winner, loserNfts, loserNftCount);
-            _clearNftsActive(winnerNfts, winnerNftCount);
-            _clearNftsActive(loserNfts, loserNftCount);
-        }
+        token.safeTransfer(winner, winnerPayout);
+        _sendToDead(burnAmount);
+        pvpLossTokenBuffer += lossBufferAmount;
 
-        _clearActive(winner);
-        _clearActive(loser);
+        entryNft.unlockByVault(winnerNftId);
+        _settleNftAccount(loser);
+        entryNft.burnByVault(loserNftId);
+        _clearActive(winner, winnerNftId);
+        _clearActive(loser, loserNftId);
         _addLossQuota(loser, getTokenPriceBnb(stakeAmount) * 150 / 100);
 
-        emit MatchSettled(matchId, winner, loser, matchInfo.mode, stakeAmount);
+        emit MatchSettled(matchId, winner, loser, stakeAmount, loserNftId);
     }
 
     function _swapTokensForBnb(uint256 amount, uint256 minOut, uint256 deadline) private returns (uint256 gained) {
@@ -747,7 +654,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     }
 
     function _settleNftAccount(address user) private {
-        uint256 weight = _nftRewardWeightOf[user];
+        uint256 weight = _nftWeightOf[user];
         uint256 accumulated = weight * accNftBnbPerShare / MAGNITUDE;
         uint256 debt = _nftRewardDebt[user];
         if (accumulated > debt) _nftCredit[user] += accumulated - debt;
@@ -775,37 +682,15 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         totalBurnedToken += actualDeadReceived;
     }
 
-    function _setTier(uint256 tierId, uint256 tokenAmount, uint8 nftCount, bool enabled) private {
-        if (
-            tokenAmount == 0 || tokenAmount > MAX_BET_AMOUNT || nftCount == 0 || nftCount > MAX_NFT_STAKE
-                || tokenAmount != uint256(nftCount) * NFT_PRICE
-        ) {
-            revert InvalidBetAmount();
-        }
-        tiers[tierId] = Tier(tokenAmount, nftCount, enabled);
-        emit TierUpdated(tierId, tokenAmount, nftCount, enabled);
+    function _setTier(uint256 tierId, uint256 tokenAmount, bool enabled) private {
+        if (tokenAmount == 0 || tokenAmount > MAX_BET_AMOUNT) revert InvalidBetAmount();
+        tiers[tierId] = Tier(tokenAmount, enabled);
+        emit TierUpdated(tierId, tokenAmount, enabled);
     }
 
-    function _unlockNfts(uint256[40] memory nftIds, uint8 nftCount) private {
-        for (uint256 i = 0; i < nftCount; i++) {
-            entryNft.unlockByVault(nftIds[i]);
-        }
-    }
-
-    function _transferNfts(address from, address to, uint256[40] memory nftIds, uint8 nftCount) private {
-        for (uint256 i = 0; i < nftCount; i++) {
-            entryNft.transferByVault(from, to, nftIds[i]);
-        }
-    }
-
-    function _clearNftsActive(uint256[40] memory nftIds, uint8 nftCount) private {
-        for (uint256 i = 0; i < nftCount; i++) {
-            nftInActiveGame[nftIds[i]] = false;
-        }
-    }
-
-    function _clearActive(address player) private {
+    function _clearActive(address player, uint256 nftId) private {
         playerInActiveGame[player] = false;
+        nftInActiveGame[nftId] = false;
     }
 
     function _isGuardian(address account) private view returns (bool) {

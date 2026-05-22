@@ -101,7 +101,7 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
 
     function vaultDataSchema() public pure override returns (VaultDataSchema memory schema) {
         schema.description =
-            unicode"创建 NFT PVP 双模式分红金库。vaultData 使用 abi.encode(address router, address guardianOverride, uint256 tokenPriceBnbPerToken, address vrfCoordinator, uint256 vrfSubId, bytes32 vrfKeyHash, uint32 vrfCallbackGasLimit, uint16 vrfRequestConfirmations, bytes vaultCreationCode)。";
+            unicode"创建 NFT PVP 分红金库。vaultData 使用 abi.encode(address router, address guardianOverride, uint256 tokenPriceBnbPerToken, address vrfCoordinator, uint256 vrfSubId, bytes32 vrfKeyHash, uint32 vrfCallbackGasLimit, uint16 vrfRequestConfirmations, bytes vaultCreationCode)。";
         schema.fields = new FieldDescriptor[](9);
         schema.fields[0] = FieldDescriptor("router", "address", unicode"Pancake 兼容 Router，用于把 Token buffer 兑换为 BNB。", 0);
         schema.fields[1] =

@@ -7,12 +7,10 @@ Do not reuse old test Vaults. Any mechanism change requires deploying a new `NFT
 - Flap token tax target: 4%.
 - Flap holder dividend: disabled (`FLAP_DIVIDEND_BPS=0`).
 - Vault `receive()` splits tax BNB 50% to NFT holder rewards and 50% to LossVault.
-- Base NFT mint price: 50,000 Token.
-- 10 base NFTs merge into 1 advanced NFT.
-- Advanced NFT: `baseUnits=10`, `rewardWeight=12`, permanent VPN eligibility.
-- Token PVP: winner gets loser 70% Token, 15% burns, 15% goes to LossVault buffer.
-- NFT PVP: winner gets loser NFTs; PVP never burns loser NFTs.
-- Match randomness: Chainlink VRF v2.5. No `secretSeed`, `seedCommitment`, `revealSeed`, or owner-selected randomness.
+- NFT mint price: 100,000 Token.
+- PVP entry: `enterQueue(tierId, nftId, tokenAmount)` locks one NFT plus the tier Token amount.
+- PVP settlement: winner gets loser 70% Token, 15% burns, 15% goes to LossVault buffer, and loser NFT is burned.
+- Match randomness: Chainlink VRF v2.5. Users do not reveal seeds, and owner-selected randomness is not supported.
 
 ## Price Model
 
@@ -64,9 +62,7 @@ npm run encode:flap-vault-data
 The website should connect directly to the same deployed `NFTPVPVaultV1` that Flap creates.
 
 - Mint through `mintNFTByCount`.
-- Merge through `mergeBaseNFTs`.
-- Token PVP through `enterTokenQueue`.
-- NFT PVP through `enterNftQueue`.
+- Enter PVP through `enterQueue`.
 - Wait for VRF fulfillment, then call or prompt `settleMatch`.
 - Offer `emergencyCancelMatch` only after VRF timeout.
 
