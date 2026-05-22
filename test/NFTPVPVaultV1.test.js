@@ -338,12 +338,20 @@ describe("NFTPVPVaultV1", function () {
     await expect(factory.createVault(await token.getAddress(), ethers.ZeroAddress, owner.address, badVaultData)).to.be.revertedWithCustomError(factory, "UnapprovedCreationCode");
   });
 
-  it("vaultUISchema exposes VRF dual-mode actions and hides reveal actions", async function () {
+  it("vaultUISchema exposes Chinese VRF dual-mode actions and hides reveal actions", async function () {
     const { vault } = await deployFixture();
     const schema = await vault.vaultUISchema();
     const names = schema.methods.map((method) => method.name);
     expect(names).to.include.members([
+      "getStats",
+      "getMyInfo",
+      "pendingNftDividends",
+      "pendingLossDividends",
+      "nftRewardWeight",
+      "nftBaseUnits",
+      "isVpnEligible",
       "mintNFTByCount",
+      "mintNFT",
       "mergeBaseNFTs",
       "enterTokenQueue",
       "enterNftQueue",
@@ -354,11 +362,29 @@ describe("NFTPVPVaultV1", function () {
     ]);
     expect(names).to.not.include("revealSeed");
     expect(names).to.not.include("claimRevealTimeoutWin");
-    for (const text of ["50,000", "10", "1.2X", "VPN", "4%", "70%", "15%", "150%", "Chainlink VRF"]) {
+    for (const text of [
+      "基础 NFT",
+      "高级 NFT",
+      "50,000 Token",
+      "10 张基础 NFT",
+      "12 张基础 NFT 分红权重",
+      "永久 VPN 权益",
+      "Chainlink VRF",
+      "4%",
+      "70%",
+      "15%",
+      "LossVault",
+      "150%",
+      "2,000,000 Token"
+    ]) {
       expect(schema.description).to.include(text);
     }
-    expect(schema.description).to.include("owner / guardian");
+    expect(schema.description).to.include("owner / guardian 不能手动指定赢家");
     expect(schema.methods.find((method) => method.name === "enterTokenQueue").approvals[0].amountFieldName).to.equal("tokenAmount");
+    expect(schema.methods.find((method) => method.name === "mintNFT").approvals[0].amountFieldName).to.equal("tokenAmount");
+    expect(schema.methods.find((method) => method.name === "mintNFTByCount").description).to.include("铸造基础 NFT");
+    expect(schema.methods.find((method) => method.name === "mergeBaseNFTs").description).to.include("合成高级 NFT");
+    expect(schema.methods.find((method) => method.name === "claimLossDividends").description).to.include("不是保证返还");
   });
 
   it("ABI no longer exposes revealSeed or claimRevealTimeoutWin", async function () {

@@ -609,17 +609,17 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function description() public view override returns (string memory) {
         return string.concat(
-            "NFTPVPVaultV1 live NFTs ",
+            unicode"NFT PVP 双模式分红金库。当前存活 NFT ",
             _toString(entryNft.activeSupply()),
-            ", NFT BNB ",
+            unicode"，NFT 分红池 BNB ",
             _toString(nftReservedBnb),
-            ", Loss BNB ",
+            unicode"，LossVault 池 BNB ",
             _toString(lossReservedBnb),
-            ", NFT pending ",
+            unicode"，NFT 未分配 BNB ",
             _toString(nftUndistributedBnb),
-            ", Loss pending ",
+            unicode"，LossVault 未分配 BNB ",
             _toString(lossUndistributedBnb),
-            "."
+            unicode"。基础 NFT 铸造价格为 50,000 Token；10 张基础 NFT 可合成 1 张高级 NFT，高级 NFT 拥有 12 张基础 NFT 分红权重和永久 VPN 权益。PVP 使用 Chainlink VRF 自动开奖，owner / guardian 不能手动指定赢家。交易税应为 4%，其中 50% 分配给 NFT 持有人，50% 进入 LossVault，分红资产为 BNB。getTokenPriceBnb 当前仅为测试网/预上线使用的 router spot quote，主网正式生产前必须替换为 TWAP / 固定估值 / 抗操纵报价。"
         );
     }
 
