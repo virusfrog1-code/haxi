@@ -48,14 +48,16 @@ function bytecodeSize(hex) {
 async function checkBytecodeSizes() {
   const vaultArtifact = await hre.artifacts.readArtifact("NFTPVPVaultV1");
   const factoryArtifact = await hre.artifacts.readArtifact("NFTPVPVaultFactory");
+  const schemaHelperArtifact = await hre.artifacts.readArtifact("NFTPVPVaultV1SchemaHelper");
   const vaultSize = bytecodeSize(vaultArtifact.deployedBytecode);
   const factorySize = bytecodeSize(factoryArtifact.deployedBytecode);
+  const schemaHelperSize = bytecodeSize(schemaHelperArtifact.deployedBytecode);
 
   if (vaultSize >= 24576) {
     throw new Error(`NFTPVPVaultV1 deployed bytecode is ${vaultSize} bytes, exceeding EIP-170 limit`);
   }
 
-  return { vaultSize, factorySize };
+  return { vaultSize, factorySize, schemaHelperSize };
 }
 
 function checkOracleTodoDocs() {
@@ -83,13 +85,36 @@ async function checkNetworkAndRouter({ rpcUrl, pancakeRouter, wbnb }) {
   }
 }
 
+async function checkVrfCoordinator({ rpcUrl, vrfCoordinator }) {
+  const provider = new hre.ethers.JsonRpcProvider(rpcUrl);
+  const code = await provider.getCode(vrfCoordinator);
+  if (!code || code === "0x") {
+    throw new Error("VRF_COORDINATOR has no contract code on BSC mainnet");
+  }
+}
+
 async function runPreflight() {
-  requireEnvs(["BSC_MAINNET_RPC_URL", "PANCAKE_ROUTER", "WBNB", "TOKEN_PRICE_BNB_PER_TOKEN"]);
+  requireEnvs([
+    "BSC_MAINNET_RPC_URL",
+    "PANCAKE_ROUTER",
+    "WBNB",
+    "TOKEN_PRICE_BNB_PER_TOKEN",
+    "VRF_COORDINATOR",
+    "VRF_SUB_ID",
+    "VRF_KEY_HASH",
+    "VRF_CALLBACK_GAS_LIMIT",
+    "VRF_REQUEST_CONFIRMATIONS"
+  ]);
   const env = {
     rpcUrl: requireEnv("BSC_MAINNET_RPC_URL"),
     pancakeRouter: requireAddress("PANCAKE_ROUTER"),
     wbnb: requireAddress("WBNB"),
-    tokenPriceBnbPerToken: requireEnv("TOKEN_PRICE_BNB_PER_TOKEN")
+    tokenPriceBnbPerToken: requireEnv("TOKEN_PRICE_BNB_PER_TOKEN"),
+    vrfCoordinator: requireAddress("VRF_COORDINATOR"),
+    vrfSubId: requireEnv("VRF_SUB_ID"),
+    vrfKeyHash: requireBytes32("VRF_KEY_HASH"),
+    vrfCallbackGasLimit: requireEnv("VRF_CALLBACK_GAS_LIMIT"),
+    vrfRequestConfirmations: requireEnv("VRF_REQUEST_CONFIRMATIONS")
   };
 
   if (BigInt(env.tokenPriceBnbPerToken) <= 0n) {
@@ -100,10 +125,12 @@ async function runPreflight() {
   checkOracleTodoDocs();
 
   await checkNetworkAndRouter(env);
+  await checkVrfCoordinator(env);
 
   console.log("BSC mainnet preflight passed");
   console.log("NFTPVPVaultV1 bytecode size:", sizes.vaultSize);
   console.log("NFTPVPVaultFactory bytecode size:", sizes.factorySize);
+  console.log("NFTPVPVaultV1SchemaHelper bytecode size:", sizes.schemaHelperSize);
 
   return { ...env, ...sizes };
 }

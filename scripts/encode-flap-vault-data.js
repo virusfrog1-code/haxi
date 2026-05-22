@@ -32,23 +32,49 @@ function requireAddress(name) {
 }
 
 async function main() {
-  requireEnvs(["PANCAKE_ROUTER", "TOKEN_PRICE_BNB_PER_TOKEN"]);
+  requireEnvs([
+    "PANCAKE_ROUTER",
+    "TOKEN_PRICE_BNB_PER_TOKEN",
+    "VRF_COORDINATOR",
+    "VRF_SUB_ID",
+    "VRF_KEY_HASH",
+    "VRF_CALLBACK_GAS_LIMIT",
+    "VRF_REQUEST_CONFIRMATIONS"
+  ]);
   const router = requireAddress("PANCAKE_ROUTER");
   const guardian =
     process.env.GUARDIAN && process.env.GUARDIAN.trim() !== ""
       ? requireAddress("GUARDIAN")
       : hre.ethers.ZeroAddress;
   const tokenPriceBnbPerToken = BigInt(requireEnv("TOKEN_PRICE_BNB_PER_TOKEN"));
+  const vrfCoordinator = requireAddress("VRF_COORDINATOR");
+  const vrfSubId = BigInt(requireEnv("VRF_SUB_ID"));
+  const vrfKeyHash = requireEnv("VRF_KEY_HASH");
+  const vrfCallbackGasLimit = Number(requireEnv("VRF_CALLBACK_GAS_LIMIT"));
+  const vrfRequestConfirmations = Number(requireEnv("VRF_REQUEST_CONFIRMATIONS"));
 
   if (tokenPriceBnbPerToken <= 0n) {
     throw new Error("TOKEN_PRICE_BNB_PER_TOKEN must be greater than zero");
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(vrfKeyHash)) {
+    throw new Error("VRF_KEY_HASH must be bytes32");
   }
 
   const artifact = await hre.artifacts.readArtifact("NFTPVPVaultV1");
   const vaultCreationCodeHash = hre.ethers.keccak256(artifact.bytecode);
   const vaultData = hre.ethers.AbiCoder.defaultAbiCoder().encode(
-    ["address", "address", "uint256", "bytes"],
-    [router, guardian, tokenPriceBnbPerToken, artifact.bytecode]
+    ["address", "address", "uint256", "address", "uint256", "bytes32", "uint32", "uint16", "bytes"],
+    [
+      router,
+      guardian,
+      tokenPriceBnbPerToken,
+      vrfCoordinator,
+      vrfSubId,
+      vrfKeyHash,
+      vrfCallbackGasLimit,
+      vrfRequestConfirmations,
+      artifact.bytecode
+    ]
   );
 
   console.log("vaultCreationCodeHash:", vaultCreationCodeHash);

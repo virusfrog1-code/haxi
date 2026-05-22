@@ -9,12 +9,22 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
     address public router;
     address public guardianOverride;
     uint256 public tokenPriceBnbPerToken;
+    address public vrfCoordinator;
+    uint256 public vrfSubId;
+    bytes32 public vrfKeyHash;
+    uint32 public vrfCallbackGasLimit;
+    uint16 public vrfRequestConfirmations;
     bytes32 public immutable vaultCreationCodeHash;
 
     event FactoryConfigUpdated(
         address indexed router,
         address indexed guardianOverride,
-        uint256 tokenPriceBnbPerToken
+        uint256 tokenPriceBnbPerToken,
+        address indexed vrfCoordinator,
+        uint256 vrfSubId,
+        bytes32 vrfKeyHash,
+        uint32 vrfCallbackGasLimit,
+        uint16 vrfRequestConfirmations
     );
     event FactoryOwnerUpdated(address indexed oldOwner, address indexed newOwner);
 
@@ -33,13 +43,18 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
         address router_,
         address guardianOverride_,
         uint256 tokenPriceBnbPerToken_,
+        address vrfCoordinator_,
+        uint256 vrfSubId_,
+        bytes32 vrfKeyHash_,
+        uint32 vrfCallbackGasLimit_,
+        uint16 vrfRequestConfirmations_,
         bytes32 vaultCreationCodeHash_
     ) {
         if (owner_ == address(0) || router_ == address(0)) revert ZeroAddress();
         if (vaultCreationCodeHash_ == bytes32(0)) revert InvalidCreationCode();
         owner = owner_;
         vaultCreationCodeHash = vaultCreationCodeHash_;
-        _setConfig(router_, guardianOverride_, tokenPriceBnbPerToken_);
+        _setConfig(router_, guardianOverride_, tokenPriceBnbPerToken_, vrfCoordinator_, vrfSubId_, vrfKeyHash_, vrfCallbackGasLimit_, vrfRequestConfirmations_);
     }
 
     function newVault(address taxToken, address quoteToken, address creator, bytes calldata vaultData)
@@ -67,9 +82,14 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
     function updateFactoryConfig(
         address router_,
         address guardianOverride_,
-        uint256 tokenPriceBnbPerToken_
+        uint256 tokenPriceBnbPerToken_,
+        address vrfCoordinator_,
+        uint256 vrfSubId_,
+        bytes32 vrfKeyHash_,
+        uint32 vrfCallbackGasLimit_,
+        uint16 vrfRequestConfirmations_
     ) external onlyOwnerOrGuardian {
-        _setConfig(router_, guardianOverride_, tokenPriceBnbPerToken_);
+        _setConfig(router_, guardianOverride_, tokenPriceBnbPerToken_, vrfCoordinator_, vrfSubId_, vrfKeyHash_, vrfCallbackGasLimit_, vrfRequestConfirmations_);
     }
 
     function transferFactoryOwner(address newOwner) external onlyOwnerOrGuardian {
@@ -81,13 +101,18 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
 
     function vaultDataSchema() public pure override returns (VaultDataSchema memory schema) {
         schema.description =
-            "Creates an NFTPVPVaultV1. vaultData is abi.encode(address router, address guardianOverride, uint256 tokenPriceBnbPerToken, bytes vaultCreationCode).";
-        schema.fields = new FieldDescriptor[](4);
+            "Creates an NFTPVPVaultV1. vaultData is abi.encode(address router, address guardianOverride, uint256 tokenPriceBnbPerToken, address vrfCoordinator, uint256 vrfSubId, bytes32 vrfKeyHash, uint32 vrfCallbackGasLimit, uint16 vrfRequestConfirmations, bytes vaultCreationCode).";
+        schema.fields = new FieldDescriptor[](9);
         schema.fields[0] = FieldDescriptor("router", "address", "Pancake-compatible router used for token-to-BNB swaps.", 0);
         schema.fields[1] =
             FieldDescriptor("guardianOverride", "address", "Optional testnet/project guardian; zero uses Flap Guardian only.", 0);
         schema.fields[2] = FieldDescriptor("tokenPriceBnbPerToken", "uint256", "Fixed BNB value of 1 token, scaled to 18 decimals.", 18);
-        schema.fields[3] = FieldDescriptor("vaultCreationCode", "bytes", "NFTPVPVaultV1 creation code.", 0);
+        schema.fields[3] = FieldDescriptor("vrfCoordinator", "address", "Chainlink VRF v2.5 coordinator.", 0);
+        schema.fields[4] = FieldDescriptor("vrfSubId", "uint256", "Chainlink VRF subscription id.", 0);
+        schema.fields[5] = FieldDescriptor("vrfKeyHash", "bytes32", "Chainlink VRF key hash.", 0);
+        schema.fields[6] = FieldDescriptor("vrfCallbackGasLimit", "uint32", "VRF callback gas limit.", 0);
+        schema.fields[7] = FieldDescriptor("vrfRequestConfirmations", "uint16", "VRF request confirmations.", 0);
+        schema.fields[8] = FieldDescriptor("vaultCreationCode", "bytes", "NFTPVPVaultV1 creation code.", 0);
         schema.isArray = false;
     }
 
@@ -101,11 +126,30 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
             address router_,
             address guardian_,
             uint256 price_,
+            address vrfCoordinator_,
+            uint256 vrfSubId_,
+            bytes32 vrfKeyHash_,
+            uint32 vrfCallbackGasLimit_,
+            uint16 vrfRequestConfirmations_,
             bytes memory creationCode
         ) =
             _decodeVaultData(vaultData);
         bytes memory initCode =
-            abi.encodePacked(creationCode, abi.encode(taxToken, router_, creator, guardian_, price_));
+            abi.encodePacked(
+                creationCode,
+                abi.encode(
+                    taxToken,
+                    router_,
+                    creator,
+                    guardian_,
+                    price_,
+                    vrfCoordinator_,
+                    vrfSubId_,
+                    vrfKeyHash_,
+                    vrfCallbackGasLimit_,
+                    vrfRequestConfirmations_
+                )
+            );
         assembly {
             vault := create(0, add(initCode, 0x20), mload(initCode))
         }
@@ -120,16 +164,27 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
             address router_,
             address guardian_,
             uint256 price_,
+            address vrfCoordinator_,
+            uint256 vrfSubId_,
+            bytes32 vrfKeyHash_,
+            uint32 vrfCallbackGasLimit_,
+            uint16 vrfRequestConfirmations_,
             bytes memory creationCode
         )
     {
         router_ = router;
         guardian_ = guardianOverride;
         price_ = tokenPriceBnbPerToken;
+        vrfCoordinator_ = vrfCoordinator;
+        vrfSubId_ = vrfSubId;
+        vrfKeyHash_ = vrfKeyHash;
+        vrfCallbackGasLimit_ = vrfCallbackGasLimit;
+        vrfRequestConfirmations_ = vrfRequestConfirmations;
 
         if (vaultData.length == 0) revert InvalidCreationCode();
-        (router_, guardian_, price_, creationCode) = abi.decode(vaultData, (address, address, uint256, bytes));
-        if (router_ == address(0)) revert ZeroAddress();
+        (router_, guardian_, price_, vrfCoordinator_, vrfSubId_, vrfKeyHash_, vrfCallbackGasLimit_, vrfRequestConfirmations_, creationCode) =
+            abi.decode(vaultData, (address, address, uint256, address, uint256, bytes32, uint32, uint16, bytes));
+        if (router_ == address(0) || vrfCoordinator_ == address(0)) revert ZeroAddress();
         if (price_ == 0) revert InvalidCreationCode();
         if (creationCode.length == 0) revert InvalidCreationCode();
         if (keccak256(creationCode) != vaultCreationCodeHash) revert UnapprovedCreationCode();
@@ -138,14 +193,33 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
     function _setConfig(
         address router_,
         address guardianOverride_,
-        uint256 tokenPriceBnbPerToken_
+        uint256 tokenPriceBnbPerToken_,
+        address vrfCoordinator_,
+        uint256 vrfSubId_,
+        bytes32 vrfKeyHash_,
+        uint32 vrfCallbackGasLimit_,
+        uint16 vrfRequestConfirmations_
     ) private {
-        if (router_ == address(0)) revert ZeroAddress();
+        if (router_ == address(0) || vrfCoordinator_ == address(0)) revert ZeroAddress();
         if (tokenPriceBnbPerToken_ == 0) revert InvalidCreationCode();
         router = router_;
         guardianOverride = guardianOverride_;
         tokenPriceBnbPerToken = tokenPriceBnbPerToken_;
-        emit FactoryConfigUpdated(router_, guardianOverride_, tokenPriceBnbPerToken_);
+        vrfCoordinator = vrfCoordinator_;
+        vrfSubId = vrfSubId_;
+        vrfKeyHash = vrfKeyHash_;
+        vrfCallbackGasLimit = vrfCallbackGasLimit_;
+        vrfRequestConfirmations = vrfRequestConfirmations_;
+        emit FactoryConfigUpdated(
+            router_,
+            guardianOverride_,
+            tokenPriceBnbPerToken_,
+            vrfCoordinator_,
+            vrfSubId_,
+            vrfKeyHash_,
+            vrfCallbackGasLimit_,
+            vrfRequestConfirmations_
+        );
     }
 
     function _isGuardian(address account) private view returns (bool) {

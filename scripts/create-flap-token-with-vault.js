@@ -111,8 +111,8 @@ async function main() {
   const quoteAmt = hre.ethers.parseEther(requireEnv("FLAP_QUOTE_AMT_BNB"));
   const value = parseUint("FLAP_MSG_VALUE_WEI", quoteAmt.toString());
 
-  const buyTaxRate = parseUint16("FLAP_BUY_TAX_RATE_BPS", 500);
-  const sellTaxRate = parseUint16("FLAP_SELL_TAX_RATE_BPS", 500);
+  const buyTaxRate = parseUint16("FLAP_BUY_TAX_RATE_BPS", 400);
+  const sellTaxRate = parseUint16("FLAP_SELL_TAX_RATE_BPS", 400);
   const taxDuration = parseUint64("FLAP_TAX_DURATION_SECONDS", 31536000);
   const antiFarmerDuration = parseUint64("FLAP_ANTI_FARMER_DURATION_SECONDS", 259200);
 
@@ -175,7 +175,7 @@ async function main() {
   console.log("meta:", meta);
   console.log("buyTaxRateBps:", buyTaxRate);
   console.log("sellTaxRateBps:", sellTaxRate);
-  console.log("tax rate:", "5% buy / 5% sell");
+  console.log("tax rate:", "4% buy / 4% sell");
   console.log("tax allocation bps:", { mktBps, deflationBps, dividendBps, lpBps });
   console.log("holder dividend disabled:", dividendBps === 0);
   console.log("tokenVersion:", "TOKEN_TAXED_V3 (6)");

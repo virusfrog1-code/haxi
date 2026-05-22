@@ -48,12 +48,12 @@ if [ "${FLAP_TOKEN_SALT}" != "0xa8afe8dddf4d0646758b161faa9c21a48de973d54bdf3630
   exit 5
 fi
 
-buy_bps="${FLAP_BUY_TAX_RATE_BPS:-500}"
-sell_bps="${FLAP_SELL_TAX_RATE_BPS:-500}"
+buy_bps="${FLAP_BUY_TAX_RATE_BPS:-400}"
+sell_bps="${FLAP_SELL_TAX_RATE_BPS:-400}"
 dividend_bps="${FLAP_DIVIDEND_BPS:-0}"
 
-if [ "${buy_bps}" != "500" ] || [ "${sell_bps}" != "500" ]; then
-  echo "Tax bps mismatch; buy=${buy_bps} sell=${sell_bps}; expected 500/500. Stop."
+if [ "${buy_bps}" != "400" ] || [ "${sell_bps}" != "400" ]; then
+  echo "Tax bps mismatch; buy=${buy_bps} sell=${sell_bps}; expected 400/400. Stop."
   exit 6
 fi
 

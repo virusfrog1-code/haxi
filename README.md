@@ -8,11 +8,11 @@ Solidity 0.8.20 Hardhat project for `NFTPVPVaultV1`, `PvpEntryNFT`, and a Flap-c
 
 ## Transfer-Tax Token Assumption
 
-Flap Tax Token taxable transactions are bonding curve buys, DEX buys, and DEX sells. Ordinary ERC20 transfers are normally not taxed, so `mintNFT`, `enterQueue`, and `settleMatch` should not create Flap transaction tax.
+Flap Tax Token taxable transactions are bonding curve buys, DEX buys, and DEX sells. Ordinary ERC20 transfers are normally not taxed, so `mintNFTByCount`, `mintNFT`, `enterTokenQueue`, `enterNftQueue`, and `settleMatch` should not create Flap transaction tax. Configure the Flap token with 4% tax, `FLAP_DIVIDEND_BPS=0`, and route tax BNB to this Vault.
 
-`mintNFT` measures the actual token amount received by the Vault and mints based on `actualReceived / 100000 tokens`. `actualReceived` must be an exact multiple of the mint price.
+`mintNFT` measures the actual token amount received by the Vault and mints based on `actualReceived / 50000 tokens`. `actualReceived` must be an exact multiple of the mint price.
 
-The before/after balance accounting remains in place to support third-party fee-on-transfer tokens. `enterQueue` also measures actual received tokens and requires `actualReceived == betAmount`. If a third-party token charges tax on ordinary transfers, the Vault must be configured as a tax-exempt address before users enter queues. Otherwise `enterQueue` will revert because the Vault is underfunded and settlement would be unsafe.
+The before/after balance accounting remains in place to support third-party fee-on-transfer tokens. `enterTokenQueue` also measures actual received tokens and requires `actualReceived == tokenAmount`. If a third-party token charges tax on ordinary transfers, the Vault must be configured as a tax-exempt address before users enter token queues. Otherwise `enterTokenQueue` will revert because the Vault is underfunded and settlement would be unsafe.
 
 Transfers to `DEAD` are treated as tokens sent to a burn/lock address. If the token taxes transfers to `DEAD`, `totalBurnedToken` tracks only the amount that actually arrives at the `DEAD` address.
 
@@ -22,7 +22,18 @@ This project does not use Flap's built-in holder dividend contract. The mechanis
 
 ## NFT Supply
 
-The 8888 NFT cap is an active supply cap. `totalMintedEver` can exceed 8888 over time after burned loser NFTs reduce `activeSupply`; `activeSupply` must never exceed 8888.
+The 8888 NFT cap is an active supply cap. `totalMintedEver` can exceed 8888 over time after NFTs are merged or burned by approved Vault flows, but `activeSupply` must never exceed 8888.
+
+Base NFTs cost 50,000 Token each. `mergeBaseNFTs(uint256[] tokenIds)` burns 10 base NFTs and mints one advanced NFT. The advanced NFT has `baseUnits=10`, `rewardWeight=12`, and `isVpnEligible=true`. NFT holder BNB rewards are distributed by reward weight, not raw NFT count. PVP NFT value uses `baseUnits`, not reward weight.
+
+## PVP And Chainlink VRF
+
+PVP has two modes:
+
+- Token mode: `enterTokenQueue(tierId, tokenAmount)` locks the tier Token amount. The winner receives 70% of the loser's Token stake, 15% goes to the `DEAD` address, and 15% goes to `pvpLossTokenBuffer`.
+- NFT mode: `enterNftQueue(tierId, nftIds)` locks NFTs. Both sides must stake equal tier `baseUnits`. The winner receives the loser's NFTs. NFTs are not burned by PVP settlement.
+
+Matching immediately requests Chainlink VRF v2.5 randomness. The callback records the random word, and `settleMatch(matchId)` completes settlement. If VRF does not return before `vrfTimeout`, participants or owner/Flap Guardian can call `emergencyCancelMatch(matchId)` to refund/unlock both sides with no winner and no LossVault quota.
 
 ## Buffer Conversion
 
@@ -60,6 +71,11 @@ Set these Replit Secrets before running deployment:
 - `PANCAKE_ROUTER`
 - `WBNB`
 - `TOKEN_PRICE_BNB_PER_TOKEN` optional on testnet, defaults to `10000000000000` (`0.00001 BNB` per token)
+- `VRF_COORDINATOR`
+- `VRF_SUB_ID`
+- `VRF_KEY_HASH`
+- `VRF_CALLBACK_GAS_LIMIT`
+- `VRF_REQUEST_CONFIRMATIONS`
 - `GUARDIAN` optional, defaults to zero address
 
 The deployment script never prints the private key. It deploys `NFTPVPVaultV1` and `NFTPVPVaultFactory`, checks that `PvpEntryNFT.vault()` points to the deployed Vault, checks Vault token/NFT/router/owner/guardian values, then writes `deployments/bsc-testnet.json`.
@@ -95,7 +111,7 @@ Generate Flap `vaultData` after setting the public router and fixed valuation en
 npm run encode:flap-vault-data
 ```
 
-Run mainnet preflight before any Factory deployment. It requires `TOKEN_PRICE_BNB_PER_TOKEN` and checks chain `56`, router/WBNB consistency, bytecode size, and fixed valuation docs:
+Run mainnet preflight before any Factory deployment. It requires `TOKEN_PRICE_BNB_PER_TOKEN` and Chainlink VRF v2.5 values, and checks chain `56`, router/WBNB consistency, bytecode size, and fixed valuation docs:
 
 ```bash
 npm run preflight:mainnet

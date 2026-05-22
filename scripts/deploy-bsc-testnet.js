@@ -33,6 +33,11 @@ async function main() {
   const wbnb = requireAddress("WBNB");
   const tokenPriceBnbPerToken = BigInt(process.env.TOKEN_PRICE_BNB_PER_TOKEN || "10000000000000");
   const guardian = process.env.GUARDIAN && process.env.GUARDIAN.trim() !== "" ? requireAddress("GUARDIAN") : hre.ethers.ZeroAddress;
+  const vrfCoordinator = requireAddress("VRF_COORDINATOR");
+  const vrfSubId = BigInt(requireEnv("VRF_SUB_ID"));
+  const vrfKeyHash = requireEnv("VRF_KEY_HASH");
+  const vrfCallbackGasLimit = Number(requireEnv("VRF_CALLBACK_GAS_LIMIT"));
+  const vrfRequestConfirmations = Number(requireEnv("VRF_REQUEST_CONFIRMATIONS"));
 
   const [deployer] = await hre.ethers.getSigners();
   const router = await hre.ethers.getContractAt(
@@ -53,7 +58,12 @@ async function main() {
     pancakeRouter,
     deployer.address,
     guardian,
-    tokenPriceBnbPerToken
+    tokenPriceBnbPerToken,
+    vrfCoordinator,
+    vrfSubId,
+    vrfKeyHash,
+    vrfCallbackGasLimit,
+    vrfRequestConfirmations
   );
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
@@ -63,6 +73,11 @@ async function main() {
     pancakeRouter,
     guardian,
     tokenPriceBnbPerToken,
+    vrfCoordinator,
+    vrfSubId,
+    vrfKeyHash,
+    vrfCallbackGasLimit,
+    vrfRequestConfirmations,
     vaultCreationCodeHash
   );
   await factory.waitForDeployment();
@@ -78,7 +93,8 @@ async function main() {
     vaultRouter: await vault.router(),
     vaultOwner: await vault.owner(),
     vaultGuardian: await vault.guardianOverride(),
-    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken()
+    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken(),
+    vaultVrfCoordinator: await vault.vrfCoordinator()
   };
 
   if (checks.nftVault.toLowerCase() !== vaultAddress.toLowerCase()) {
@@ -102,6 +118,9 @@ async function main() {
   if (checks.vaultTokenPriceBnbPerToken !== tokenPriceBnbPerToken) {
     throw new Error("Deployment check failed: Vault token price mismatch");
   }
+  if (checks.vaultVrfCoordinator.toLowerCase() !== vrfCoordinator.toLowerCase()) {
+    throw new Error("Deployment check failed: Vault VRF coordinator mismatch");
+  }
 
   const deployment = {
     network: "bscTestnet",
@@ -115,6 +134,11 @@ async function main() {
     PancakeRouter: pancakeRouter,
     WBNB: wbnb,
     TokenPriceBnbPerToken: tokenPriceBnbPerToken.toString(),
+    VRFCoordinator: vrfCoordinator,
+    VRFSubId: vrfSubId.toString(),
+    VRFKeyHash: vrfKeyHash,
+    VRFCallbackGasLimit: vrfCallbackGasLimit,
+    VRFRequestConfirmations: vrfRequestConfirmations,
     Guardian: guardian,
     vaultCreationCodeHash,
     checks

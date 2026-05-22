@@ -5,5 +5,5 @@ import {VaultBase} from "./VaultBase.sol";
 import {VaultUISchema} from "./IVaultSchemasV1.sol";
 
 abstract contract VaultBaseV2 is VaultBase {
-    function vaultUISchema() public pure virtual returns (VaultUISchema memory schema);
+    function vaultUISchema() public view virtual returns (VaultUISchema memory schema);
 }
