@@ -237,7 +237,8 @@ async function main() {
     console.log("vault:", createdVault);
     try {
       const vault = await hre.ethers.getContractAt("NFTPVPVaultV1", createdVault);
-      console.log("nft:", await vault.entryNft());
+      const stats = await vault.getStats();
+      console.log("nft:", stats.nftAddress);
     } catch (error) {
       console.log("nft: unavailable", error.shortMessage || error.message);
     }

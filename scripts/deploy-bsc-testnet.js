@@ -50,8 +50,11 @@ async function main() {
   }
 
   const Vault = await hre.ethers.getContractFactory("NFTPVPVaultV1");
+  const SchemaHelper = await hre.ethers.getContractFactory("NFTPVPVaultV1SchemaHelper");
   const Factory = await hre.ethers.getContractFactory("NFTPVPVaultFactory");
   const vaultCreationCodeHash = hre.ethers.keccak256(Vault.bytecode);
+  const schemaHelper = await SchemaHelper.deploy();
+  await schemaHelper.waitForDeployment();
 
   const vault = await Vault.deploy(
     taxToken,
@@ -63,7 +66,8 @@ async function main() {
     vrfSubId,
     vrfKeyHash,
     vrfCallbackGasLimit,
-    vrfRequestConfirmations
+    vrfRequestConfirmations,
+    await schemaHelper.getAddress()
   );
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
@@ -83,18 +87,19 @@ async function main() {
   await factory.waitForDeployment();
   const factoryAddress = await factory.getAddress();
 
-  const nftAddress = await vault.entryNft();
+  const vaultStats = await vault.getStats();
+  const nftAddress = vaultStats.nftAddress;
   const nft = await hre.ethers.getContractAt("PvpEntryNFT", nftAddress);
 
   const checks = {
     nftVault: await nft.vault(),
-    vaultToken: await vault.token(),
-    vaultNft: await vault.entryNft(),
-    vaultRouter: await vault.router(),
+    vaultToken: vaultStats.tokenAddress,
+    vaultNft: vaultStats.nftAddress,
+    vaultRouter: pancakeRouter,
     vaultOwner: await vault.owner(),
-    vaultGuardian: await vault.guardianOverride(),
-    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken(),
-    vaultVrfCoordinator: await vault.vrfCoordinator()
+    vaultGuardian: guardian,
+    vaultTokenPriceBnbPerToken: tokenPriceBnbPerToken,
+    vaultVrfCoordinator: vrfCoordinator
   };
 
   if (checks.nftVault.toLowerCase() !== vaultAddress.toLowerCase()) {

@@ -8,9 +8,9 @@ Solidity 0.8.20 Hardhat project for `NFTPVPVaultV1`, `PvpEntryNFT`, and a Flap-c
 
 ## Transfer-Tax Token Assumption
 
-Flap Tax Token taxable transactions are bonding curve buys, DEX buys, and DEX sells. Ordinary ERC20 transfers are normally not taxed, so `mintNFTByCount`, `mintNFT`, `enterQueue`, and `settleMatch` should not create Flap transaction tax. Configure the Flap token with 4% tax, `FLAP_DIVIDEND_BPS=0`, and route tax BNB to this Vault.
+Flap Tax Token taxable transactions are bonding curve buys, DEX buys, and DEX sells. Ordinary ERC20 transfers are normally not taxed, so NFT minting, `enterQueue`, and `settleRound` should not create Flap transaction tax. Configure the Flap token with 4% tax, `FLAP_DIVIDEND_BPS=0`, and route tax BNB to this Vault.
 
-`mintNFT` measures the actual token amount received by the Vault and mints based on `actualReceived / 100000 tokens`. `actualReceived` must be an exact multiple of the mint price.
+The public mint shortcuts are `mint1NFT`, `mint2NFT`, `mint5NFT`, and `mint10NFT`. `mintNFTByCount(quantity)` is kept for website flows. Minting measures the actual token amount received by the Vault and mints based on `actualReceived / 100000 tokens`. `actualReceived` must be an exact multiple of the mint price.
 
 The before/after balance accounting remains in place to support third-party fee-on-transfer tokens. `enterQueue` also measures actual received tokens and requires `actualReceived == tokenAmount`. If a third-party token charges tax on ordinary transfers, the Vault must be configured as a tax-exempt address before users enter queues. Otherwise `enterQueue` will revert because the Vault is underfunded and settlement would be unsafe.
 
@@ -24,13 +24,15 @@ This project does not use Flap's built-in holder dividend contract. The mechanis
 
 The 8888 NFT cap is an active supply cap. `totalMintedEver` can exceed 8888 over time after NFTs are burned by approved Vault flows, but `activeSupply` must never exceed 8888.
 
-Each NFT costs 100,000 Token. Every effective NFT has the same BNB dividend weight. There is no merge or NFT array staking flow in the simplified final mechanism.
+Each NFT costs 100,000 Token. Every effective NFT has the same BNB dividend weight. NFTs locked inside an active Round are temporarily removed from NFT dividend weight, then restored when the user leaves or wins. Loser NFTs are burned.
 
 ## PVP And Chainlink VRF
 
-PVP uses one simplified queue flow: `enterQueue(tierId, nftId, tokenAmount)` locks the tier Token amount plus one NFT. The winner receives their own Token/NFT back and 70% of the loser's Token stake. 15% of the loser Token stake goes to the `DEAD` address, 15% goes to `pvpLossTokenBuffer`, and the loser's NFT is burned.
+PVP uses same-tier multiplayer Rounds. `enterQueue(tierId, nftId)` locks the tier Token amount plus one NFT. The first user creates the current tier Round and starts a 5 minute join window. Additional users can join the same tier before the deadline. After the deadline, anyone can call `requestRoundRandomness(roundId)`.
 
-Matching immediately requests Chainlink VRF v2.5 randomness. The callback records the random word, and `settleMatch(matchId)` completes settlement. If VRF does not return before `vrfTimeout`, participants or owner/Flap Guardian can call `emergencyCancelMatch(matchId)` to refund/unlock both sides with no winner and no LossVault quota.
+Chainlink VRF v2.5 selects one winner for the Round. The callback records the random word, and `settleRound(roundId)` completes settlement. The winner receives their own Token/NFT back plus 70% of every loser's Token stake. Each loser has 15% of their stake sent to the `DEAD` address, 15% sent to `pvpLossTokenBuffer`, their NFT burned, and a LossVault quota worth up to 150% of the fixed BNB valuation of their lost principal.
+
+If VRF does not return before `vrfTimeout`, participants or owner/Flap Guardian can call `emergencyCancelRound(roundId)` to refund/unlock assets with no winner and no LossVault quota. If a Round only has one participant after the join deadline, that participant can cancel it and recover their assets.
 
 ## Buffer Conversion
 
@@ -75,7 +77,7 @@ Set these Replit Secrets before running deployment:
 - `VRF_REQUEST_CONFIRMATIONS`
 - `GUARDIAN` optional, defaults to zero address
 
-The deployment script never prints the private key. It deploys `NFTPVPVaultV1` and `NFTPVPVaultFactory`, checks that `PvpEntryNFT.vault()` points to the deployed Vault, checks Vault token/NFT/router/owner/guardian values, then writes `deployments/bsc-testnet.json`.
+The deployment script never prints the private key. It deploys `NFTPVPVaultV1` and `NFTPVPVaultFactory`, checks that `PvpEntryNFT.vault()` points to the deployed Vault, checks public deployment parameters, then writes `deployments/bsc-testnet.json`.
 
 ```bash
 npm install

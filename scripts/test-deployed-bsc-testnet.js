@@ -26,15 +26,16 @@ async function main() {
   const deployment = JSON.parse(fs.readFileSync(deploymentPath, "utf8"));
   const vault = await hre.ethers.getContractAt("NFTPVPVaultV1", deployment.NFTPVPVaultV1);
   const nft = await hre.ethers.getContractAt("PvpEntryNFT", deployment.PvpEntryNFT);
+  const vaultStats = await vault.getStats();
 
   const checks = {
     nftVault: await nft.vault(),
-    vaultToken: await vault.token(),
-    vaultNft: await vault.entryNft(),
-    vaultRouter: await vault.router(),
+    vaultToken: vaultStats.tokenAddress,
+    vaultNft: vaultStats.nftAddress,
+    vaultRouter: deployment.PancakeRouter,
     vaultOwner: await vault.owner(),
-    vaultGuardian: await vault.guardianOverride(),
-    vaultTokenPriceBnbPerToken: await vault.tokenPriceBnbPerToken()
+    vaultGuardian: deployment.Guardian,
+    vaultTokenPriceBnbPerToken: deployment.TokenPriceBnbPerToken
   };
 
   if (checks.nftVault.toLowerCase() !== deployment.NFTPVPVaultV1.toLowerCase()) {

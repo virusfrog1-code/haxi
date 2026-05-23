@@ -5,7 +5,7 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface INftPvpVaultBalanceHook {
-    function onNftBalanceChange(address from, address to) external;
+    function onNftBalanceChange(address from, address to, uint256 tokenId) external;
 }
 
 contract PvpEntryNFT is ERC721, Ownable {
@@ -15,7 +15,6 @@ contract PvpEntryNFT is ERC721, Ownable {
     uint256 public totalMintedEver;
     uint256 public activeSupply;
     uint256 public totalBurnedNFT;
-    uint256 public totalRewardWeight;
 
     mapping(uint256 => bool) public locked;
 
@@ -39,7 +38,6 @@ contract PvpEntryNFT is ERC721, Ownable {
         if (activeSupply >= MAX_SUPPLY) revert MaxSupplyExceeded();
         tokenId = ++totalMintedEver;
         activeSupply += 1;
-        totalRewardWeight += 1;
         _safeMint(to, tokenId);
     }
 
@@ -66,14 +64,13 @@ contract PvpEntryNFT is ERC721, Ownable {
         locked[tokenId] = false;
         activeSupply -= 1;
         totalBurnedNFT += 1;
-        totalRewardWeight -= 1;
         _burn(tokenId);
     }
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address from) {
         from = _ownerOf(tokenId);
         if (from != address(0) && to != address(0) && locked[tokenId]) revert LockedToken();
-        INftPvpVaultBalanceHook(vault).onNftBalanceChange(from, to);
+        INftPvpVaultBalanceHook(vault).onNftBalanceChange(from, to, tokenId);
         return super._update(to, tokenId, auth);
     }
 }

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {VaultFactoryBaseV2} from "./flap/VaultFactoryBaseV2.sol";
 import {FieldDescriptor, VaultDataSchema} from "./flap/IVaultSchemasV1.sol";
+import {NFTPVPVaultV1SchemaHelper} from "./NFTPVPVaultV1SchemaHelper.sol";
 
 contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
     address public owner;
@@ -14,6 +15,7 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
     bytes32 public vrfKeyHash;
     uint32 public vrfCallbackGasLimit;
     uint16 public vrfRequestConfirmations;
+    address public immutable schemaHelper;
     bytes32 public immutable vaultCreationCodeHash;
 
     event FactoryConfigUpdated(
@@ -53,6 +55,7 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
         if (owner_ == address(0) || router_ == address(0)) revert ZeroAddress();
         if (vaultCreationCodeHash_ == bytes32(0)) revert InvalidCreationCode();
         owner = owner_;
+        schemaHelper = address(new NFTPVPVaultV1SchemaHelper());
         vaultCreationCodeHash = vaultCreationCodeHash_;
         _setConfig(router_, guardianOverride_, tokenPriceBnbPerToken_, vrfCoordinator_, vrfSubId_, vrfKeyHash_, vrfCallbackGasLimit_, vrfRequestConfirmations_);
     }
@@ -147,7 +150,8 @@ contract NFTPVPVaultFactory is VaultFactoryBaseV2 {
                     vrfSubId_,
                     vrfKeyHash_,
                     vrfCallbackGasLimit_,
-                    vrfRequestConfirmations_
+                    vrfRequestConfirmations_,
+                    schemaHelper
                 )
             );
         assembly {
