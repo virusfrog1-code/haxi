@@ -592,7 +592,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         });
     }
 
-    function getMyInfo(address user) external view returns (MyInfo memory info) {
+    function getMyInfo(address user) public view returns (MyInfo memory info) {
         uint256 roundId = playerCurrentRound[user];
         Participant memory participant = roundId == 0 ? Participant(false, 0, 0) : _roundParticipant[roundId][user];
         Round memory round = rounds[roundId];
@@ -624,6 +624,30 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         return getRound(currentRoundOfTier[tierId]);
     }
 
+    function getMyRoundInfo(address user) external view returns (MyInfo memory) {
+        return getMyInfo(user);
+    }
+
+    function getMyLossInfo(address user)
+        external
+        view
+        returns (
+            uint256 lossPrincipalBnb,
+            uint256 lossQuota,
+            uint256 lossClaimed,
+            uint256 lossQuotaRemaining,
+            uint256 pendingLossBnb
+        )
+    {
+        return (
+            lossPrincipalBnbOf[user],
+            lossQuotaGrantedOf[user],
+            claimedLossDividends[user],
+            lossQuotaOf[user],
+            pendingLossDividends(user)
+        );
+    }
+
     function getRound(uint256 roundId) public view returns (RoundView memory view_) {
         Round memory round = rounds[roundId];
         view_ = RoundView({
@@ -646,6 +670,18 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function getRoundParticipants(uint256 roundId) external view returns (address[] memory) {
         return _roundPlayers[roundId];
+    }
+
+    function getRoundStatus(uint256 roundId) external view returns (uint8) {
+        return uint8(rounds[roundId].status);
+    }
+
+    function roundDeadline(uint256 roundId) external view returns (uint256) {
+        return rounds[roundId].joinDeadline;
+    }
+
+    function roundRandomReady(uint256 roundId) external view returns (bool) {
+        return rounds[roundId].status == RoundStatus.RandomReady;
     }
 
     function canRequestRoundRandomness(uint256 roundId) public view returns (bool) {

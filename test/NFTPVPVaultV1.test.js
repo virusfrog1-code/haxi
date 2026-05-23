@@ -171,6 +171,7 @@ describe("NFTPVPVaultV1", function () {
     const before = await token.balanceOf(alice.address);
     await enter(vault, alice, 0, 1);
     await time.increase(301);
+    expect((await vault.getMyInfo(alice.address)).canCancel).to.equal(true);
     await vault.connect(alice).emergencyCancelRound(1);
 
     expect(await token.balanceOf(alice.address)).to.equal(before);
@@ -344,12 +345,23 @@ describe("NFTPVPVaultV1", function () {
     expect(stats.totalRounds).to.equal(1n);
     expect(stats.currentRoundIds[1]).to.equal(1n);
     expect(stats.currentRoundPlayers[1]).to.equal(2n);
+    expect(stats.currentRoundDeadlines[1]).to.equal((await vault.getRound(1)).joinDeadline);
     const info = await vault.getMyInfo(alice.address);
     expect(info.currentRoundId).to.equal(1n);
     expect(info.currentTierId).to.equal(1n);
     expect(info.stakedNftId).to.equal(1n);
     expect(info.stakedTokenAmount).to.equal(tiers[1]);
     expect(info.currentRoundStatus).to.equal(1n);
+    expect(info.canCancel).to.equal(false);
+    const roundInfo = await vault.getMyRoundInfo(alice.address);
+    expect(roundInfo.currentRoundId).to.equal(1n);
+    expect(roundInfo.currentRoundPlayers).to.equal(2n);
+    const lossInfo = await vault.getMyLossInfo(alice.address);
+    expect(lossInfo.lossPrincipalBnb).to.equal(0n);
+    expect(lossInfo.lossQuota).to.equal(0n);
+    expect(await vault.getRoundStatus(1)).to.equal(1n);
+    expect(await vault.roundDeadline(1)).to.equal((await vault.getRound(1)).joinDeadline);
+    expect(await vault.roundRandomReady(1)).to.equal(false);
   });
 
   it("factory creates the Round VRF vault and rejects unapproved creation code", async function () {
@@ -389,9 +401,12 @@ describe("NFTPVPVaultV1", function () {
     const { vault } = await deployFixture();
     const schema = await vault.vaultUISchema();
     const names = schema.methods.map((method) => method.name);
+    const methodByName = Object.fromEntries(schema.methods.map((method) => [method.name, method]));
     expect(names).to.include.members([
       "getStats",
       "getMyInfo",
+      "getMyLossInfo",
+      "getMyRoundInfo",
       "pendingNftDividends",
       "pendingLossDividends",
       "mint1NFT",
@@ -408,6 +423,9 @@ describe("NFTPVPVaultV1", function () {
       "claimLossDividends",
       "getRound",
       "getCurrentRound",
+      "getRoundStatus",
+      "roundDeadline",
+      "roundRandomReady",
       "canRequestRoundRandomness",
       "canSettleRound",
       "canEmergencyCancelRound"
@@ -427,6 +445,8 @@ describe("NFTPVPVaultV1", function () {
     for (const text of ["5 分钟", "多人 Round", "唯一赢家", "Chainlink VRF", "输家 NFT 被销毁", "150%", "4%", "70%", "15%", "LossVault"]) {
       expect(schema.description).to.include(text);
     }
+    expect(methodByName.getStats.outputs.map((field) => field.name)).to.include("各档位当前 Round 截止时间");
+    expect(methodByName.getMyInfo.outputs.map((field) => field.name)).to.include("当前 Round 可取消");
   });
 
   it("ABI no longer exposes removed reveal, merge, or dual-mode queue methods", async function () {

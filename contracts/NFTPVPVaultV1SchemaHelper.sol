@@ -8,29 +8,34 @@ contract NFTPVPVaultV1SchemaHelper {
         schema.vaultType = unicode"NFT PVP 多人 Round 分红金库";
         schema.description =
             unicode"NFT PVP 分红金库采用同档位多人 Round 机制。用户选择档位并质押对应 Token 和 1 张 NFT 后加入当前轮。第一位用户加入后开始 5 分钟倒计时，倒计时内同档位用户均可加入。倒计时结束后，任何人可触发 Chainlink VRF 公平开奖，项目方不能决定赢家。本轮只产生 1 名唯一赢家，赢家获得所有输家的 70% Token；所有输家的 15% Token 销毁，15% Token 进入 LossVault，输家 NFT 被销毁，并获得最高亏损本金 150% 的 BNB 分红额度。NFT 进入 Round 后暂停分红，退出或获胜后恢复分红。交易税 4%，其中 50% 分配给 NFT 持有人，50% 进入 LossVault。LossVault 不是保证返还，实际领取取决于池子收入。";
-        schema.methods = new VaultMethodSchema[](21);
+        schema.methods = new VaultMethodSchema[](26);
 
         _viewNoInput(schema.methods[0], "getStats", unicode"查看金库总数据、Round 数据、NFT 分红、LossVault 额度、累计销毁和各档位等待人数。", _statsOutputs());
         _viewAddressInput(schema.methods[1], "getMyInfo", unicode"查看指定用户的 NFT、LossVault、当前 Round、胜负场次、剩余额度和当前可领取信息。", _myInfoOutputs());
-        _viewAddressInputSingle(schema.methods[2], "pendingNftDividends", unicode"查询指定地址可领取的 NFT 持有人 BNB 分红。", unicode"待领取 NFT 分红", 18);
-        _viewAddressInputSingle(schema.methods[3], "pendingLossDividends", unicode"查询指定地址可领取的 LossVault BNB 分红。", unicode"待领取 LossVault 分红", 18);
-        _writeNoInput(schema.methods[4], "mint1NFT", unicode"铸造 1 张 NFT。每张 NFT 消耗 100,000 Token。NFT 是参与 PVP 的入场门票。铸造资金中 50% 销毁，25% 进入 LossVault，25% 分红给 NFT 持有人。");
-        _writeNoInput(schema.methods[5], "mint2NFT", unicode"铸造 2 张 NFT，共消耗 200,000 Token。NFT 是 PVP 入场门票。");
-        _writeNoInput(schema.methods[6], "mint5NFT", unicode"铸造 5 张 NFT，共消耗 500,000 Token。NFT 是 PVP 入场门票。");
-        _writeNoInput(schema.methods[7], "mint10NFT", unicode"铸造 10 张 NFT，共消耗 1,000,000 Token。NFT 是 PVP 入场门票。");
-        _writeMintNFTByCount(schema.methods[8]);
-        _writeEnterQueue(schema.methods[9]);
-        _writeTierInput(schema.methods[10], "leaveQueue", unicode"退出等待中的 Round。只有 Round 仍在 5 分钟倒计时内且未请求 VRF 时可退出，退出后 Token 和 NFT 退回，NFT 恢复分红。");
-        _writeRoundId(schema.methods[11], "requestRoundRandomness", unicode"请求 Chainlink VRF 开奖。Round 倒计时结束且至少 2 人参与后，任何人都可以调用。项目方不能指定赢家。");
-        _writeRoundId(schema.methods[12], "settleRound", unicode"结算 Round。当 Chainlink VRF 随机数返回后，任何人都可以调用。若随机数未返回，会提示 RoundRandomNotReady。");
-        _writeRoundId(schema.methods[13], "emergencyCancelRound", unicode"超时取消 Round。单人 Round 倒计时结束后可取消；VRF 长时间未返回时参与者可取消。取消后 Token 和 NFT 退回，不产生输赢或 LossVault 额度。");
-        _writeNoInput(schema.methods[14], "claimNftDividends", unicode"领取 NFT 持有人 BNB 分红。Round 中的 NFT 暂停分红，退出或获胜后恢复分红。连续领取不会 underflow。");
-        _writeNoInput(schema.methods[15], "claimLossDividends", unicode"领取 LossVault BNB 分红。PVP 输家最高获得亏损本金 150% 的额度，实际领取取决于 LossVault 收入。");
-        _viewUintInput(schema.methods[16], "getRound", unicode"查看 Round 状态、参与人数、截止时间、是否可请求 VRF、是否可结算、是否可取消。", _roundOutputs(), "roundId", unicode"Round ID。");
-        _viewUintInput(schema.methods[17], "getCurrentRound", unicode"查看指定档位当前开放的 Round。档位：0=100,000，1=500,000，2=2,000,000，3=5,000,000，4=10,000,000 Token。", _roundOutputs(), "tierId", unicode"档位编号。");
-        _viewUintInput(schema.methods[18], "canRequestRoundRandomness", unicode"查询指定 Round 是否已经满足请求 Chainlink VRF 开奖条件。", _boolOutput(unicode"是否可请求 VRF", unicode"倒计时结束且至少 2 人参与，或达到最大人数时为 true。"), "roundId", unicode"Round ID。");
-        _viewUintInput(schema.methods[19], "canSettleRound", unicode"查询指定 Round 是否已经收到 Chainlink VRF 随机数并可结算。", _boolOutput(unicode"是否可结算", unicode"VRF 随机数已返回时为 true。"), "roundId", unicode"Round ID。");
-        _viewUintInput(schema.methods[20], "canEmergencyCancelRound", unicode"查询指定 Round 是否可以超时取消。", _boolOutput(unicode"是否可取消", unicode"单人 Round 到期或 VRF 超时未返回时为 true。"), "roundId", unicode"Round ID。");
+        _viewAddressInput(schema.methods[2], "getMyLossInfo", unicode"查看指定用户的 LossVault 亏损本金、总额度、已领取、剩余额度和当前可领取 BNB。", _lossInfoOutputs());
+        _viewAddressInput(schema.methods[3], "getMyRoundInfo", unicode"查看指定用户当前参与的 Round、tier、质押 NFT、质押 Token、Round 状态和是否可开奖/结算/取消。", _myInfoOutputs());
+        _viewAddressInputSingle(schema.methods[4], "pendingNftDividends", unicode"查询指定地址可领取的 NFT 持有人 BNB 分红。", unicode"待领取 NFT 分红", 18);
+        _viewAddressInputSingle(schema.methods[5], "pendingLossDividends", unicode"查询指定地址可领取的 LossVault BNB 分红。", unicode"待领取 LossVault 分红", 18);
+        _writeNoInput(schema.methods[6], "mint1NFT", unicode"铸造 1 张 NFT。每张 NFT 消耗 100,000 Token。NFT 是参与 PVP 的入场门票。铸造资金中 50% 销毁，25% 进入 LossVault，25% 分红给 NFT 持有人。");
+        _writeNoInput(schema.methods[7], "mint2NFT", unicode"铸造 2 张 NFT，共消耗 200,000 Token。NFT 是 PVP 入场门票。");
+        _writeNoInput(schema.methods[8], "mint5NFT", unicode"铸造 5 张 NFT，共消耗 500,000 Token。NFT 是 PVP 入场门票。");
+        _writeNoInput(schema.methods[9], "mint10NFT", unicode"铸造 10 张 NFT，共消耗 1,000,000 Token。NFT 是 PVP 入场门票。");
+        _writeMintNFTByCount(schema.methods[10]);
+        _writeEnterQueue(schema.methods[11]);
+        _writeTierInput(schema.methods[12], "leaveQueue", unicode"退出等待中的 Round。只有 Round 仍在 5 分钟倒计时内且未请求 VRF 时可退出，退出后 Token 和 NFT 退回，NFT 恢复分红。");
+        _writeRoundId(schema.methods[13], "requestRoundRandomness", unicode"请求 Chainlink VRF 开奖。Round 倒计时结束且至少 2 人参与后，任何人都可以调用。项目方不能指定赢家。");
+        _writeRoundId(schema.methods[14], "settleRound", unicode"结算 Round。当 Chainlink VRF 随机数返回后，任何人都可以调用。若随机数未返回，会提示 RoundRandomNotReady。");
+        _writeRoundId(schema.methods[15], "emergencyCancelRound", unicode"超时取消 Round。单人 Round 倒计时结束后可取消；VRF 长时间未返回时参与者可取消。取消后 Token 和 NFT 退回，不产生输赢或 LossVault 额度。");
+        _writeNoInput(schema.methods[16], "claimNftDividends", unicode"领取 NFT 持有人 BNB 分红。Round 中的 NFT 暂停分红，退出或获胜后恢复分红。连续领取不会 underflow。");
+        _writeNoInput(schema.methods[17], "claimLossDividends", unicode"领取 LossVault BNB 分红。PVP 输家最高获得亏损本金 150% 的额度，实际领取取决于 LossVault 收入。");
+        _viewUintInput(schema.methods[18], "getRound", unicode"查看 Round 状态、参与人数、截止时间、是否可请求 VRF、是否可结算、是否可取消。", _roundOutputs(), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[19], "getCurrentRound", unicode"查看指定档位当前开放的 Round。档位：0=100,000，1=500,000，2=2,000,000，3=5,000,000，4=10,000,000 Token。", _roundOutputs(), "tierId", unicode"档位编号。");
+        _viewUintInput(schema.methods[20], "getRoundStatus", unicode"查询指定 Round 当前状态。0=None,1=Open,2=RandomnessRequested,3=RandomReady,4=Settled,5=Cancelled。", _uintOutput(unicode"Round 状态", unicode"Round 当前状态。"), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[21], "roundDeadline", unicode"查询指定 Round 的加入截止时间。", _uintOutput(unicode"加入截止时间", unicode"Round 的 5 分钟倒计时结束时间。"), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[22], "roundRandomReady", unicode"查询指定 Round 是否已经收到 Chainlink VRF 随机数。", _boolOutput(unicode"随机数是否已返回", unicode"VRF 随机数已返回时为 true。"), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[23], "canRequestRoundRandomness", unicode"查询指定 Round 是否已经满足请求 Chainlink VRF 开奖条件。", _boolOutput(unicode"是否可请求 VRF", unicode"倒计时结束且至少 2 人参与，或达到最大人数时为 true。"), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[24], "canSettleRound", unicode"查询指定 Round 是否已经收到 Chainlink VRF 随机数并可结算。", _boolOutput(unicode"是否可结算", unicode"VRF 随机数已返回时为 true。"), "roundId", unicode"Round ID。");
+        _viewUintInput(schema.methods[25], "canEmergencyCancelRound", unicode"查询指定 Round 是否可以超时取消。", _boolOutput(unicode"是否可取消", unicode"单人 Round 到期或 VRF 超时未返回时为 true。"), "roundId", unicode"Round ID。");
     }
 
     function _viewNoInput(VaultMethodSchema memory method, string memory name, string memory methodDescription, FieldDescriptor[] memory outputs)
@@ -135,7 +140,7 @@ contract NFTPVPVaultV1SchemaHelper {
     }
 
     function _statsOutputs() private pure returns (FieldDescriptor[] memory outputs) {
-        outputs = new FieldDescriptor[](27);
+        outputs = new FieldDescriptor[](28);
         outputs[0] = FieldDescriptor(unicode"Tax Token 合约", "address", unicode"Tax Token 合约地址。", 0);
         outputs[1] = FieldDescriptor(unicode"PVP NFT 合约", "address", unicode"PVP NFT 合约地址。", 0);
         outputs[2] = FieldDescriptor(unicode"历史累计铸造 NFT", "uint256", unicode"历史累计铸造 NFT 数量。", 0);
@@ -163,10 +168,11 @@ contract NFTPVPVaultV1SchemaHelper {
         outputs[24] = FieldDescriptor(unicode"历史累计输家", "uint256", unicode"历史累计输家数量。", 0);
         outputs[25] = FieldDescriptor(unicode"各档位当前 Round ID", "uint256[5]", unicode"tier 0-4 当前开放 Round ID。", 0);
         outputs[26] = FieldDescriptor(unicode"各档位当前等待人数", "uint256[5]", unicode"tier 0-4 当前 Round 参与人数。", 0);
+        outputs[27] = FieldDescriptor(unicode"各档位当前 Round 截止时间", "uint256[5]", unicode"tier 0-4 当前 Round 的 5 分钟倒计时结束时间。", 0);
     }
 
     function _myInfoOutputs() private pure returns (FieldDescriptor[] memory outputs) {
-        outputs = new FieldDescriptor[](19);
+        outputs = new FieldDescriptor[](20);
         outputs[0] = FieldDescriptor(unicode"我的 NFT 数量", "uint256", unicode"当前钱包持有的 NFT 数量。", 0);
         outputs[1] = FieldDescriptor(unicode"我的有效分红 NFT", "uint256", unicode"当前参与分红的 NFT 数量，Round 中 NFT 暂停分红。", 0);
         outputs[2] = FieldDescriptor(unicode"我的可领取 NFT 分红", "uint256", unicode"当前可领取 NFT BNB 分红。", 18);
@@ -186,6 +192,16 @@ contract NFTPVPVaultV1SchemaHelper {
         outputs[16] = FieldDescriptor(unicode"当前 Round 参与人数", "uint256", unicode"当前 Round 参与人数。", 0);
         outputs[17] = FieldDescriptor(unicode"当前 Round 可开奖", "bool", unicode"是否可以请求 Chainlink VRF。", 0);
         outputs[18] = FieldDescriptor(unicode"当前 Round 可结算", "bool", unicode"是否可以结算。", 0);
+        outputs[19] = FieldDescriptor(unicode"当前 Round 可取消", "bool", unicode"是否可以超时取消。", 0);
+    }
+
+    function _lossInfoOutputs() private pure returns (FieldDescriptor[] memory outputs) {
+        outputs = new FieldDescriptor[](5);
+        outputs[0] = FieldDescriptor(unicode"累计亏损本金估值", "uint256", unicode"按固定 BNB 估值累计的亏损本金。", 18);
+        outputs[1] = FieldDescriptor(unicode"LossVault 总额度", "uint256", unicode"历史累计获得的 LossVault quota。", 18);
+        outputs[2] = FieldDescriptor(unicode"已领取 BNB", "uint256", unicode"已领取的 LossVault BNB。", 18);
+        outputs[3] = FieldDescriptor(unicode"剩余可领取额度", "uint256", unicode"剩余可领取的最高额度。", 18);
+        outputs[4] = FieldDescriptor(unicode"当前可领取 BNB", "uint256", unicode"当前可领取的 LossVault BNB，受池子余额和额度上限限制。", 18);
     }
 
     function _roundOutputs() private pure returns (FieldDescriptor[] memory outputs) {
@@ -209,5 +225,10 @@ contract NFTPVPVaultV1SchemaHelper {
     function _boolOutput(string memory name, string memory description_) private pure returns (FieldDescriptor[] memory outputs) {
         outputs = new FieldDescriptor[](1);
         outputs[0] = FieldDescriptor(name, "bool", description_, 0);
+    }
+
+    function _uintOutput(string memory name, string memory description_) private pure returns (FieldDescriptor[] memory outputs) {
+        outputs = new FieldDescriptor[](1);
+        outputs[0] = FieldDescriptor(name, "uint256", description_, 0);
     }
 }
