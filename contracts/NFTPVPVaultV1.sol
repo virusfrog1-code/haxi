@@ -121,6 +121,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     struct Stats {
         address tokenAddress;
         address nftAddress;
+        uint256 maxNftSupply;
         uint256 totalMinted;
         uint256 liveNftSupply;
         uint256 totalBurnedNFT;
@@ -150,7 +151,9 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     }
 
     struct MyInfo {
+        uint256 tokenBalance;
         uint256 nftBalance;
+        uint256 autoSelectedNftId;
         uint256 effectiveNftRewards;
         uint256 pendingNftBnb;
         uint256 pendingLossBnb;
@@ -198,6 +201,8 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     mapping(uint256 => uint256) private currentRoundOfTier;
     mapping(uint256 => bool) private nftInActiveGame;
     mapping(uint256 => bool) private nftRewardActive;
+    mapping(address => uint256[]) private _ownedNfts;
+    mapping(uint256 => uint256) private _ownedNftIndexPlusOne;
 
     mapping(address => uint256) private playerCurrentRound;
     mapping(address => uint256) private _nftWeightOf;
@@ -264,6 +269,8 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     error SlippageExceeded();
     error DeadlineExpired();
     error InvalidPrice();
+    error NoAvailableNFT();
+    error NoOpenRoundForUser();
 
     modifier onlyOwnerOrGuardian() {
         if (msg.sender != owner() && !_isGuardian(msg.sender)) revert NotOwnerOrGuardian();
@@ -317,20 +324,8 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         emit BnbReceived(msg.sender, msg.value, nftAmount, lossAmount);
     }
 
-    function mint1NFT() external nonReentrant {
-        _mintNFT(msg.sender, NFT_PRICE);
-    }
-
-    function mint2NFT() external nonReentrant {
-        _mintNFT(msg.sender, NFT_PRICE * 2);
-    }
-
-    function mint5NFT() external nonReentrant {
-        _mintNFT(msg.sender, NFT_PRICE * 5);
-    }
-
-    function mint10NFT() external nonReentrant {
-        _mintNFT(msg.sender, NFT_PRICE * 10);
+    function mintNFT(uint256 tokenAmount) external nonReentrant {
+        _mintNFT(msg.sender, tokenAmount);
     }
 
     function mintNFTByCount(uint256 quantity) external nonReentrant {
@@ -338,48 +333,62 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         _mintNFT(msg.sender, quantity * NFT_PRICE);
     }
 
-    function enterQueue(uint256 tierId, uint256 nftId) external nonReentrant {
+    function enterQueueByAmount(uint256 tokenAmount) external nonReentrant {
+        uint256 tierId = _tierIdForAmount(tokenAmount);
+        uint256 nftId = _autoSelectedNft(msg.sender);
+        if (nftId == 0) revert NoAvailableNFT();
+        _enterQueue(msg.sender, tierId, nftId, tokenAmount);
+    }
+
+    function _enterQueue(address user, uint256 tierId, uint256 nftId, uint256 tokenAmount) private {
         Tier memory tier = tiers[tierId];
         if (!tier.enabled) revert InvalidTier();
-        if (playerCurrentRound[msg.sender] != 0) revert PlayerAlreadyActive();
-        if (entryNft.ownerOf(nftId) != msg.sender) revert NotNftOwner();
+        if (tier.tokenAmount != tokenAmount) revert InvalidBetAmount();
+        if (playerCurrentRound[user] != 0) revert PlayerAlreadyActive();
+        if (entryNft.ownerOf(nftId) != user) revert NotNftOwner();
         if (nftInActiveGame[nftId]) revert NftAlreadyActive();
 
-        uint256 actualReceived = _pullTokens(msg.sender, tier.tokenAmount);
+        uint256 actualReceived = _pullTokens(user, tier.tokenAmount);
         if (actualReceived != tier.tokenAmount) revert InvalidBetAmount();
 
         uint256 roundId = _getOrCreateOpenRound(tierId, tier.tokenAmount);
         Round storage round = rounds[roundId];
-        if (block.timestamp > round.joinDeadline) revert RoundJoinClosed();
+        if (round.joinDeadline != 0 && block.timestamp > round.joinDeadline) revert RoundJoinClosed();
         if (_roundPlayers[roundId].length >= MAX_ROUND_PLAYERS) revert RoundFull();
-        if (_roundParticipant[roundId][msg.sender].joined) revert AlreadyJoinedRound();
+        if (_roundParticipant[roundId][user].joined) revert AlreadyJoinedRound();
 
-        _pauseNftReward(msg.sender, nftId);
+        _pauseNftReward(user, nftId);
         entryNft.lockByVault(nftId);
         nftInActiveGame[nftId] = true;
-        playerCurrentRound[msg.sender] = roundId;
-        _roundParticipant[roundId][msg.sender] = Participant(true, nftId, tier.tokenAmount);
-        _roundPlayerIndexPlusOne[roundId][msg.sender] = _roundPlayers[roundId].length + 1;
-        _roundPlayers[roundId].push(msg.sender);
-        roundsJoinedOf[msg.sender] += 1;
+        playerCurrentRound[user] = roundId;
+        _roundParticipant[roundId][user] = Participant(true, nftId, tier.tokenAmount);
+        _roundPlayerIndexPlusOne[roundId][user] = _roundPlayers[roundId].length + 1;
+        _roundPlayers[roundId].push(user);
+        roundsJoinedOf[user] += 1;
         totalParticipantEntries += 1;
-        emit RoundEntered(roundId, tierId, msg.sender, nftId, tier.tokenAmount);
+        if (_roundPlayers[roundId].length == 2 && round.startTime == 0) {
+            round.startTime = block.timestamp;
+            round.joinDeadline = block.timestamp + ROUND_JOIN_DURATION;
+        }
+        emit RoundEntered(roundId, tierId, user, nftId, tier.tokenAmount);
     }
 
-    function leaveQueue(uint256 tierId) external nonReentrant {
+    function leaveQueue() external nonReentrant {
         uint256 roundId = playerCurrentRound[msg.sender];
-        if (roundId == 0) revert NotRoundParticipant();
+        if (roundId == 0) revert NoOpenRoundForUser();
         Round storage round = rounds[roundId];
-        if (round.tierId != tierId) revert InvalidTier();
         if (round.status != RoundStatus.Open) revert RoundNotOpen();
-        if (block.timestamp > round.joinDeadline) revert RoundJoinClosed();
+        if (round.joinDeadline != 0 && block.timestamp > round.joinDeadline) revert RoundJoinClosed();
         _removeParticipantAndRefund(roundId, msg.sender);
         if (_roundPlayers[roundId].length == 0) {
             round.status = RoundStatus.Cancelled;
             totalRoundsCancelled += 1;
             openRoundCount -= 1;
-            if (currentRoundOfTier[tierId] == roundId) currentRoundOfTier[tierId] = 0;
+            if (currentRoundOfTier[round.tierId] == roundId) currentRoundOfTier[round.tierId] = 0;
             emit RoundCancelled(roundId, 0);
+        } else if (_roundPlayers[roundId].length == 1) {
+            round.startTime = 0;
+            round.joinDeadline = 0;
         }
     }
 
@@ -388,6 +397,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         if (round.status == RoundStatus.None) revert RoundNotFound();
         if (round.status != RoundStatus.Open) revert RoundRandomAlreadyRequested();
         if (_roundPlayers[roundId].length < 2) revert RoundTooSmall();
+        if (round.joinDeadline == 0) revert RoundNotExpired(roundId, 0);
         if (block.timestamp < round.joinDeadline && _roundPlayers[roundId].length < MAX_ROUND_PLAYERS) {
             revert RoundNotExpired(roundId, round.joinDeadline);
         }
@@ -423,9 +433,10 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         if (round.status == RoundStatus.None) revert RoundNotFound();
         if (round.status == RoundStatus.Settled || round.status == RoundStatus.Cancelled) revert RoundAlreadySettled();
 
-        bool soloExpired = round.status == RoundStatus.Open && _roundPlayers[roundId].length == 1 && block.timestamp >= round.joinDeadline;
+        bool soloOpen = round.status == RoundStatus.Open && _roundPlayers[roundId].length == 1 && round.joinDeadline == 0;
+        bool soloExpired = round.status == RoundStatus.Open && _roundPlayers[roundId].length == 1 && round.joinDeadline != 0 && block.timestamp >= round.joinDeadline;
         bool vrfExpired = round.status == RoundStatus.RandomnessRequested && block.timestamp >= round.requestTime + vrfTimeout;
-        if (!soloExpired && !vrfExpired) {
+        if (!soloOpen && !soloExpired && !vrfExpired) {
             uint256 deadline = round.status == RoundStatus.Open ? round.joinDeadline : round.requestTime + vrfTimeout;
             revert RoundNotExpired(roundId, deadline);
         }
@@ -516,16 +527,23 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         if (msg.sender != address(entryNft)) revert NotNftContract();
         if (from == to) return;
         if (from == address(0) && to != address(0)) {
+            _addOwnedNft(to, tokenId);
             nftRewardActive[tokenId] = true;
             _increaseNftWeight(to);
         } else if (to == address(0)) {
+            _removeOwnedNft(from, tokenId);
             if (nftRewardActive[tokenId]) {
                 nftRewardActive[tokenId] = false;
                 _decreaseNftWeight(from);
             }
         } else if (nftRewardActive[tokenId]) {
+            _removeOwnedNft(from, tokenId);
+            _addOwnedNft(to, tokenId);
             _decreaseNftWeight(from);
             _increaseNftWeight(to);
+        } else {
+            _removeOwnedNft(from, tokenId);
+            _addOwnedNft(to, tokenId);
         }
     }
 
@@ -563,6 +581,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         stats = Stats({
             tokenAddress: address(token),
             nftAddress: address(entryNft),
+            maxNftSupply: entryNft.MAX_SUPPLY(),
             totalMinted: entryNft.totalMintedEver(),
             liveNftSupply: entryNft.activeSupply(),
             totalBurnedNFT: entryNft.totalBurnedNFT(),
@@ -597,7 +616,9 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         Participant memory participant = roundId == 0 ? Participant(false, 0, 0) : _roundParticipant[roundId][user];
         Round memory round = rounds[roundId];
         info = MyInfo({
+            tokenBalance: token.balanceOf(user),
             nftBalance: entryNft.balanceOf(user),
+            autoSelectedNftId: _autoSelectedNft(user),
             effectiveNftRewards: _nftWeightOf[user],
             pendingNftBnb: pendingNftDividends(user),
             pendingLossBnb: pendingLossDividends(user),
@@ -626,6 +647,14 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function getMyRoundInfo(address user) external view returns (MyInfo memory) {
         return getMyInfo(user);
+    }
+
+    function getAutoSelectedNFT(address user) external view returns (uint256) {
+        return _autoSelectedNft(user);
+    }
+
+    function getMyAvailableNFT(address user) external view returns (uint256) {
+        return _autoSelectedNft(user);
     }
 
     function getMyLossInfo(address user)
@@ -697,7 +726,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
     function canEmergencyCancelRound(uint256 roundId) public view returns (bool) {
         Round memory round = rounds[roundId];
         if (round.status == RoundStatus.Open) {
-            return _roundPlayers[roundId].length <= 1 && block.timestamp >= round.joinDeadline;
+            return _roundPlayers[roundId].length == 1 && (round.joinDeadline == 0 || block.timestamp >= round.joinDeadline);
         }
         if (round.status == RoundStatus.RandomnessRequested) {
             return block.timestamp >= round.requestTime + vrfTimeout;
@@ -731,6 +760,7 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
 
     function _mintNFT(address minter, uint256 tokenAmount) private {
         if (tokenAmount == 0) revert InvalidTokenAmount();
+        if (tokenAmount % NFT_PRICE != 0) revert InvalidTokenAmount();
         uint256 actualReceived = _pullTokens(minter, tokenAmount);
         if (actualReceived == 0 || actualReceived % NFT_PRICE != 0) revert InvalidTokenAmount();
         uint256 quantity = actualReceived / NFT_PRICE;
@@ -755,7 +785,11 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         roundId = currentRoundOfTier[tierId];
         if (roundId != 0) {
             Round storage current = rounds[roundId];
-            if (current.status == RoundStatus.Open && block.timestamp <= current.joinDeadline && _roundPlayers[roundId].length < MAX_ROUND_PLAYERS) {
+            if (
+                current.status == RoundStatus.Open
+                    && (current.joinDeadline == 0 || block.timestamp <= current.joinDeadline)
+                    && _roundPlayers[roundId].length < MAX_ROUND_PLAYERS
+            ) {
                 return roundId;
             }
         }
@@ -764,12 +798,10 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         Round storage round = rounds[roundId];
         round.tierId = tierId;
         round.betAmount = betAmount;
-        round.startTime = block.timestamp;
-        round.joinDeadline = block.timestamp + ROUND_JOIN_DURATION;
         round.status = RoundStatus.Open;
         totalRoundsCreated += 1;
         openRoundCount += 1;
-        emit RoundCreated(roundId, tierId, betAmount, round.joinDeadline);
+        emit RoundCreated(roundId, tierId, betAmount, 0);
     }
 
     function _requestRandomness(uint256 roundId) private returns (uint256 requestId) {
@@ -989,6 +1021,43 @@ contract NFTPVPVaultV1 is VaultBaseV2, Ownable, ReentrancyGuard {
         if (tokenAmount == 0 || tokenAmount > MAX_BET_AMOUNT) revert InvalidBetAmount();
         tiers[tierId] = Tier(tokenAmount, enabled);
         emit TierUpdated(tierId, tokenAmount, enabled);
+    }
+
+    function _tierIdForAmount(uint256 tokenAmount) private view returns (uint256) {
+        for (uint256 i = 0; i < 5; i++) {
+            if (tiers[i].enabled && tiers[i].tokenAmount == tokenAmount) return i;
+        }
+        revert InvalidBetAmount();
+    }
+
+    function _autoSelectedNft(address user) private view returns (uint256) {
+        uint256[] storage ids = _ownedNfts[user];
+        for (uint256 i = 0; i < ids.length; i++) {
+            uint256 tokenId = ids[i];
+            if (nftRewardActive[tokenId] && !nftInActiveGame[tokenId]) return tokenId;
+        }
+        return 0;
+    }
+
+    function _addOwnedNft(address user, uint256 tokenId) private {
+        if (_ownedNftIndexPlusOne[tokenId] != 0) return;
+        _ownedNfts[user].push(tokenId);
+        _ownedNftIndexPlusOne[tokenId] = _ownedNfts[user].length;
+    }
+
+    function _removeOwnedNft(address user, uint256 tokenId) private {
+        uint256 indexPlusOne = _ownedNftIndexPlusOne[tokenId];
+        if (indexPlusOne == 0) return;
+        uint256[] storage ids = _ownedNfts[user];
+        uint256 index = indexPlusOne - 1;
+        uint256 lastIndex = ids.length - 1;
+        if (index != lastIndex) {
+            uint256 lastTokenId = ids[lastIndex];
+            ids[index] = lastTokenId;
+            _ownedNftIndexPlusOne[lastTokenId] = index + 1;
+        }
+        ids.pop();
+        delete _ownedNftIndexPlusOne[tokenId];
     }
 
     function _currentRoundIds() private view returns (uint256[5] memory out) {

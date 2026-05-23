@@ -8,7 +8,7 @@ Do not reuse old test Vaults. Any mechanism change requires deploying a new `NFT
 - Flap holder dividend: disabled (`FLAP_DIVIDEND_BPS=0`).
 - Vault `receive()` splits tax BNB 50% to NFT holder rewards and 50% to LossVault.
 - NFT mint price: 100,000 Token.
-- PVP entry: `enterQueue(tierId, nftId)` locks one NFT plus the tier Token amount.
+- PVP entry: `enterQueueByAmount(tokenAmount)` locks the exact tier Token amount and automatically selects one available NFT.
 - PVP settlement: same-tier multiplayer Round, one winner, every loser contributes 70% Token to the winner, 15% burns, 15% goes to LossVault buffer, and loser NFTs are burned.
 - Round randomness: Chainlink VRF v2.5. Users do not reveal seeds, and owner-selected randomness is not supported.
 
@@ -61,10 +61,10 @@ npm run encode:flap-vault-data
 
 The website should connect directly to the same deployed `NFTPVPVaultV1` that Flap creates.
 
-- Mint through `mintNFTByCount` or fixed shortcuts (`mint1NFT`, `mint2NFT`, `mint5NFT`, `mint10NFT`).
-- Enter PVP through `enterQueue(tierId, nftId)`.
-- After the 5 minute join window, call or prompt `requestRoundRandomness(roundId)`.
+- Mint through `mintNFT(tokenAmount)` on Flap, or `mintNFTByCount(quantity)` on the website after approving `quantity * 100,000 Token`.
+- Enter PVP through `enterQueueByAmount(tokenAmount)`.
+- After the second user starts the 5 minute join window and the window ends, call or prompt `requestRoundRandomness(roundId)`.
 - Wait for VRF fulfillment, then call or prompt `settleRound(roundId)`.
-- Offer `emergencyCancelRound(roundId)` only for a single-player expired Round or after VRF timeout.
+- Offer `leaveQueue()` for a user's current open Round, and `emergencyCancelRound(roundId)` for a single-player waiting Round or after VRF timeout.
 
 See `docs/WEBSITE_INTEGRATION.md` for frontend call details.

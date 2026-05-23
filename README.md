@@ -10,7 +10,7 @@ Solidity 0.8.20 Hardhat project for `NFTPVPVaultV1`, `PvpEntryNFT`, and a Flap-c
 
 Flap Tax Token taxable transactions are bonding curve buys, DEX buys, and DEX sells. Ordinary ERC20 transfers are normally not taxed, so NFT minting, `enterQueue`, and `settleRound` should not create Flap transaction tax. Configure the Flap token with 4% tax, `FLAP_DIVIDEND_BPS=0`, and route tax BNB to this Vault.
 
-The public mint shortcuts are `mint1NFT`, `mint2NFT`, `mint5NFT`, and `mint10NFT`. `mintNFTByCount(quantity)` is kept for website flows. Minting measures the actual token amount received by the Vault and mints based on `actualReceived / 100000 tokens`. `actualReceived` must be an exact multiple of the mint price.
+The Flap mint entry is `mintNFT(tokenAmount)`, where users enter the Token amount directly so Flap can approve the same input amount. `mintNFTByCount(quantity)` is kept for website flows that can calculate `quantity * 100,000 Token` before calling. Minting measures the actual token amount received by the Vault and mints based on `actualReceived / 100000 tokens`. `actualReceived` must be an exact multiple of the mint price.
 
 The before/after balance accounting remains in place to support third-party fee-on-transfer tokens. `enterQueue` also measures actual received tokens and requires `actualReceived == tokenAmount`. If a third-party token charges tax on ordinary transfers, the Vault must be configured as a tax-exempt address before users enter queues. Otherwise `enterQueue` will revert because the Vault is underfunded and settlement would be unsafe.
 
@@ -28,11 +28,11 @@ Each NFT costs 100,000 Token. Every effective NFT has the same BNB dividend weig
 
 ## PVP And Chainlink VRF
 
-PVP uses same-tier multiplayer Rounds. `enterQueue(tierId, nftId)` locks the tier Token amount plus one NFT. The first user creates the current tier Round and starts a 5 minute join window. Additional users can join the same tier before the deadline. After the deadline, anyone can call `requestRoundRandomness(roundId)`.
+PVP uses same-tier multiplayer Rounds. `enterQueueByAmount(tokenAmount)` maps the exact Token amount to a tier and automatically selects the user's first available NFT. The first user creates the current tier Round without starting the countdown; the second user starts the 5 minute join window. Additional users can join the same tier before the deadline. After the deadline, anyone can call `requestRoundRandomness(roundId)`.
 
 Chainlink VRF v2.5 selects one winner for the Round. The callback records the random word, and `settleRound(roundId)` completes settlement. The winner receives their own Token/NFT back plus 70% of every loser's Token stake. Each loser has 15% of their stake sent to the `DEAD` address, 15% sent to `pvpLossTokenBuffer`, their NFT burned, and a LossVault quota worth up to 150% of the fixed BNB valuation of their lost principal.
 
-If VRF does not return before `vrfTimeout`, participants or owner/Flap Guardian can call `emergencyCancelRound(roundId)` to refund/unlock assets with no winner and no LossVault quota. If a Round only has one participant after the join deadline, that participant can cancel it and recover their assets.
+If VRF does not return before `vrfTimeout`, participants or owner/Flap Guardian can call `emergencyCancelRound(roundId)` to refund/unlock assets with no winner and no LossVault quota. If a Round only has one participant, that participant can cancel it and recover their assets.
 
 ## Buffer Conversion
 

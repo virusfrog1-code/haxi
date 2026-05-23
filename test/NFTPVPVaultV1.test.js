@@ -57,7 +57,8 @@ describe("NFTPVPVaultV1", function () {
   }
 
   async function enter(vault, user, tierId, nftId) {
-    return vault.connect(user).enterQueue(tierId, nftId);
+    void nftId;
+    return vault.connect(user).enterQueueByAmount(tiers[tierId]);
   }
 
   async function closeRoundAndRequest(vault, roundId) {
@@ -76,19 +77,18 @@ describe("NFTPVPVaultV1", function () {
     expect(await ethers.provider.getBalance(await vault.getAddress())).to.be.gte(reserved);
   }
 
-  it("mint1NFT, mint2NFT, mint5NFT, mint10NFT and mintNFTByCount mint at 100,000 Token each", async function () {
+  it("mintNFT by token amount and mintNFTByCount mint at 100,000 Token each", async function () {
     const { alice, token, vault, nft } = await deployFixture();
     const before = await token.balanceOf(alice.address);
 
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(alice).mint2NFT();
-    await vault.connect(alice).mint5NFT();
-    await vault.connect(alice).mint10NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(alice).mintNFT(NFT_PRICE * 2n);
     await vault.connect(alice).mintNFTByCount(1);
+    await expect(vault.connect(alice).mintNFT(NFT_PRICE + 1n)).to.be.revertedWithCustomError(vault, "InvalidTokenAmount");
 
-    expect(await token.balanceOf(alice.address)).to.equal(before - NFT_PRICE * 19n);
-    expect(await nft.balanceOf(alice.address)).to.equal(19n);
-    expect((await vault.getStats()).effectiveNftRewards).to.equal(19n);
+    expect(await token.balanceOf(alice.address)).to.equal(before - NFT_PRICE * 4n);
+    expect(await nft.balanceOf(alice.address)).to.equal(4n);
+    expect((await vault.getStats()).effectiveNftRewards).to.equal(4n);
   });
 
   it("mintNFTByCount rejects zero and keeps 50/25/25 allocation plus active supply cap", async function () {
@@ -113,36 +113,69 @@ describe("NFTPVPVaultV1", function () {
     await expect(vault.setTier(5, ethers.parseEther("10000001"), true)).to.be.revertedWithCustomError(vault, "InvalidBetAmount");
   });
 
-  it("first player creates a Round with 5 minute deadline and can leave before deadline", async function () {
+  it("enterQueueByAmount maps each exact Token amount to its tier and rejects invalid amounts or missing NFTs", async function () {
+    const { alice, bob, carol, dave, erin, vault } = await deployFixture();
+    const users = [alice, bob, carol, dave, erin];
+    for (const user of users) {
+      await vault.connect(user).mintNFT(NFT_PRICE);
+    }
+    for (let i = 0; i < tiers.length; i++) {
+      await vault.connect(users[i]).enterQueueByAmount(tiers[i]);
+      const info = await vault.getMyInfo(users[i].address);
+      expect(info.currentTierId).to.equal(BigInt(i));
+      expect(info.stakedTokenAmount).to.equal(tiers[i]);
+    }
+    await expect(vault.connect(alice).enterQueueByAmount(ethers.parseEther("123456"))).to.be.revertedWithCustomError(vault, "InvalidBetAmount");
+    await expect(vault.connect((await ethers.getSigners())[8]).enterQueueByAmount(tiers[0])).to.be.revertedWithCustomError(vault, "NoAvailableNFT");
+  });
+
+  it("enterQueueByAmount automatically selects the first available NFT", async function () {
+    const { alice, bob, vault } = await deployFixture();
+    await vault.connect(alice).mintNFT(NFT_PRICE * 2n);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
+    expect(await vault.getAutoSelectedNFT(alice.address)).to.equal(1n);
+    await vault.connect(alice).enterQueueByAmount(tiers[0]);
+    expect((await vault.getMyInfo(alice.address)).stakedNftId).to.equal(1n);
+    expect(await vault.getAutoSelectedNFT(alice.address)).to.equal(2n);
+    await vault.connect(bob).enterQueueByAmount(tiers[0]);
+    await time.increase(301);
+    await vault.requestRoundRandomness(1);
+    expect(await vault.getAutoSelectedNFT(alice.address)).to.equal(2n);
+  });
+
+  it("first player creates a waiting Round without deadline and can leave before an opponent joins", async function () {
     const { alice, token, vault, nft } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
     const before = await token.balanceOf(alice.address);
-    const tx = await enter(vault, alice, 0, 1);
-    const block = await ethers.provider.getBlock(tx.blockNumber);
+    await enter(vault, alice, 0, 1);
     const round = await vault.getRound(1);
 
     expect(round.roundId).to.equal(1n);
     expect(round.tierId).to.equal(0n);
-    expect(round.startTime).to.equal(BigInt(block.timestamp));
-    expect(round.joinDeadline).to.equal(BigInt(block.timestamp + 300));
+    expect(round.startTime).to.equal(0n);
+    expect(round.joinDeadline).to.equal(0n);
     expect(round.participantCount).to.equal(1n);
+    expect(round.canCancel).to.equal(true);
     expect(await nft.locked(1)).to.equal(true);
     expect((await vault.getStats()).lockedNftsInRounds).to.equal(1n);
 
-    await vault.connect(alice).leaveQueue(0);
+    await vault.connect(alice).leaveQueue();
     expect(await token.balanceOf(alice.address)).to.equal(before);
     expect(await nft.locked(1)).to.equal(false);
     expect((await vault.getStats()).effectiveNftRewards).to.equal(1n);
   });
 
-  it("multiple users join the same tier Round before deadline", async function () {
+  it("multiple users join the same tier Round and second user starts the 5 minute deadline", async function () {
     const { alice, bob, carol, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
-    await vault.connect(carol).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
+    await vault.connect(carol).mintNFT(NFT_PRICE);
 
     await enter(vault, alice, 0, 1);
-    await enter(vault, bob, 0, 2);
+    const tx = await enter(vault, bob, 0, 2);
+    const block = await ethers.provider.getBlock(tx.blockNumber);
+    expect((await vault.getRound(1)).startTime).to.equal(BigInt(block.timestamp));
+    expect((await vault.getRound(1)).joinDeadline).to.equal(BigInt(block.timestamp + 300));
     await enter(vault, carol, 0, 3);
 
     expect(await vault.getRoundParticipants(1)).to.deep.equal([alice.address, bob.address, carol.address]);
@@ -151,26 +184,25 @@ describe("NFTPVPVaultV1", function () {
 
   it("after deadline new entrants go to next Round and old Round can request VRF", async function () {
     const { alice, bob, carol, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
-    await vault.connect(carol).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
+    await vault.connect(carol).mintNFT(NFT_PRICE);
     await enter(vault, alice, 0, 1);
     await enter(vault, bob, 0, 2);
     await time.increase(301);
 
     await expect(enter(vault, carol, 0, 3)).to.emit(vault, "RoundCreated");
-    expect((await vault.getRound(2)).joinDeadline).to.be.gt(await time.latest());
+    expect((await vault.getRound(2)).joinDeadline).to.equal(0n);
     expect(await vault.canRequestRoundRandomness(1)).to.equal(true);
     await vault.requestRoundRandomness(1);
     expect((await vault.getRound(1)).status).to.equal(2n);
   });
 
-  it("single-player expired Round can be cancelled without winner or quota", async function () {
+  it("single-player waiting Round can be cancelled without winner or quota", async function () {
     const { alice, token, vault, nft } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
     const before = await token.balanceOf(alice.address);
     await enter(vault, alice, 0, 1);
-    await time.increase(301);
     expect((await vault.getMyInfo(alice.address)).canCancel).to.equal(true);
     await vault.connect(alice).emergencyCancelRound(1);
 
@@ -182,9 +214,9 @@ describe("NFTPVPVaultV1", function () {
 
   it("VRF selects exactly one winner among all participants", async function () {
     const { alice, bob, carol, token, vrf, vault, nft } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
-    await vault.connect(carol).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
+    await vault.connect(carol).mintNFT(NFT_PRICE);
     const aliceBefore = await token.balanceOf(alice.address);
     const bobBefore = await token.balanceOf(bob.address);
     const carolBefore = await token.balanceOf(carol.address);
@@ -213,8 +245,8 @@ describe("NFTPVPVaultV1", function () {
 
   it("owner or guardian cannot decide winner and settle waits for VRF", async function () {
     const { owner, alice, bob, vrf, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await enter(vault, alice, 0, 1);
     await enter(vault, bob, 0, 2);
     await closeRoundAndRequest(vault, 1);
@@ -226,8 +258,8 @@ describe("NFTPVPVaultV1", function () {
 
   it("VRF timeout emergencyCancelRound refunds all players and has readable early error", async function () {
     const { alice, bob, token, vault, nft } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     const aliceBefore = await token.balanceOf(alice.address);
     const bobBefore = await token.balanceOf(bob.address);
     await enter(vault, alice, 0, 1);
@@ -246,14 +278,14 @@ describe("NFTPVPVaultV1", function () {
 
   it("fee-on-transfer underfunding reverts when entering queue", async function () {
     const { alice, carol, token, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
     await token.setTransferFee(1000, carol.address);
     await expect(enter(vault, alice, 0, 1)).to.be.revertedWithCustomError(vault, "InvalidBetAmount");
   });
 
   it("same address cannot join another Round and locked NFT cannot transfer", async function () {
     const { alice, bob, vault, nft } = await deployFixture();
-    await vault.connect(alice).mint2NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE * 2n);
     await enter(vault, alice, 0, 1);
     await expect(enter(vault, alice, 1, 2)).to.be.revertedWithCustomError(vault, "PlayerAlreadyActive");
     await expect(nft.connect(alice).transferFrom(alice.address, bob.address, 1)).to.be.revertedWithCustomError(nft, "LockedToken");
@@ -261,8 +293,8 @@ describe("NFTPVPVaultV1", function () {
 
   it("NFT entering Round settles historical dividends and pauses future dividends", async function () {
     const { owner, alice, bob, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await owner.sendTransaction({ to: await vault.getAddress(), value: ethers.parseEther("2") });
     expect(await vault.pendingNftDividends(alice.address)).to.equal(ethers.parseEther("0.5"));
 
@@ -274,8 +306,8 @@ describe("NFTPVPVaultV1", function () {
 
   it("winner NFT restores dividends, loser pending dividends remain claimable, and repeated claim does not underflow", async function () {
     const { owner, alice, bob, vrf, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await owner.sendTransaction({ to: await vault.getAddress(), value: ethers.parseEther("2") });
     await enter(vault, alice, 0, 1);
     await enter(vault, bob, 0, 2);
@@ -293,8 +325,8 @@ describe("NFTPVPVaultV1", function () {
   it("LossVault excludes historical rewards, tracks total, claimed and remaining quota", async function () {
     const { owner, alice, bob, vrf, vault } = await deployFixture();
     await owner.sendTransaction({ to: await vault.getAddress(), value: ethers.parseEther("2") });
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await enter(vault, alice, 0, 1);
     await enter(vault, bob, 0, 2);
     await closeRoundAndRequest(vault, 1);
@@ -320,8 +352,8 @@ describe("NFTPVPVaultV1", function () {
 
   it("convertMintBuffers keeps router BNB out of receive 50/50 split", async function () {
     const { alice, bob, vrf, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await enter(vault, alice, 0, 1);
     await enter(vault, bob, 0, 2);
     await closeRoundAndRequest(vault, 1);
@@ -336,17 +368,20 @@ describe("NFTPVPVaultV1", function () {
 
   it("getStats and getMyInfo expose Round and LossVault user data", async function () {
     const { alice, bob, vault } = await deployFixture();
-    await vault.connect(alice).mint1NFT();
-    await vault.connect(bob).mint1NFT();
+    await vault.connect(alice).mintNFT(NFT_PRICE);
+    await vault.connect(bob).mintNFT(NFT_PRICE);
     await enter(vault, alice, 1, 1);
     await enter(vault, bob, 1, 2);
 
     const stats = await vault.getStats();
+    expect(stats.maxNftSupply).to.equal(8888n);
     expect(stats.totalRounds).to.equal(1n);
     expect(stats.currentRoundIds[1]).to.equal(1n);
     expect(stats.currentRoundPlayers[1]).to.equal(2n);
     expect(stats.currentRoundDeadlines[1]).to.equal((await vault.getRound(1)).joinDeadline);
     const info = await vault.getMyInfo(alice.address);
+    expect(info.tokenBalance).to.be.gt(0n);
+    expect(info.autoSelectedNftId).to.equal(0n);
     expect(info.currentRoundId).to.equal(1n);
     expect(info.currentTierId).to.equal(1n);
     expect(info.stakedNftId).to.equal(1n);
@@ -403,19 +438,15 @@ describe("NFTPVPVaultV1", function () {
     const names = schema.methods.map((method) => method.name);
     const methodByName = Object.fromEntries(schema.methods.map((method) => [method.name, method]));
     expect(names).to.include.members([
-      "getStats",
-      "getMyInfo",
-      "getMyLossInfo",
-      "getMyRoundInfo",
-      "pendingNftDividends",
-      "pendingLossDividends",
-      "mint1NFT",
-      "mint2NFT",
-      "mint5NFT",
-      "mint10NFT",
-      "mintNFTByCount",
-      "enterQueue",
+      "mintNFT",
+      "enterQueueByAmount",
       "leaveQueue",
+      "claimNftDividends",
+      "claimLossDividends",
+      "getMyInfo",
+      "getStats",
+      "getAutoSelectedNFT",
+      "getMyLossInfo",
       "requestRoundRandomness",
       "settleRound",
       "emergencyCancelRound",
@@ -428,10 +459,17 @@ describe("NFTPVPVaultV1", function () {
       "roundRandomReady",
       "canRequestRoundRandomness",
       "canSettleRound",
-      "canEmergencyCancelRound"
+      "canEmergencyCancelRound",
+      "pendingNftDividends",
+      "pendingLossDividends"
     ]);
     for (const removed of [
-      "mintNFT",
+      "mint1NFT",
+      "mint2NFT",
+      "mint5NFT",
+      "mint10NFT",
+      "mintNFTByCount",
+      "enterQueue",
       "settleMatch",
       "emergencyCancelMatch",
       "mergeBaseNFTs",
@@ -442,18 +480,26 @@ describe("NFTPVPVaultV1", function () {
     ]) {
       expect(names).to.not.include(removed);
     }
-    for (const text of ["5 分钟", "多人 Round", "唯一赢家", "Chainlink VRF", "输家 NFT 被销毁", "150%", "4%", "70%", "15%", "LossVault"]) {
+    expect(methodByName.mintNFT.inputs).to.have.length(1);
+    expect(methodByName.mintNFT.inputs[0].name).to.equal("tokenAmount");
+    expect(methodByName.mintNFT.approvals[0].amountFieldName).to.equal("tokenAmount");
+    expect(methodByName.enterQueueByAmount.inputs).to.have.length(1);
+    expect(methodByName.enterQueueByAmount.inputs[0].name).to.equal("tokenAmount");
+    expect(methodByName.enterQueueByAmount.approvals[0].amountFieldName).to.equal("tokenAmount");
+    expect(methodByName.leaveQueue.inputs).to.have.length(0);
+    for (const text of ["输入 100000 = 铸造 1 张 NFT", "加入 PVP 只需输入对赌 Token 数量", "系统自动选择", "多人 Round", "5 分钟倒计时", "唯一赢家", "Chainlink VRF", "输家 NFT 销毁", "150%", "70%", "15%", "LossVault"]) {
       expect(schema.description).to.include(text);
     }
-    expect(methodByName.getStats.outputs.map((field) => field.name)).to.include("各档位当前 Round 截止时间");
-    expect(methodByName.getMyInfo.outputs.map((field) => field.name)).to.include("当前 Round 可取消");
+    expect(methodByName.getStats.outputs.map((field) => field.name)).to.include("各档倒计时结束时间");
+    expect(methodByName.getMyInfo.outputs.map((field) => field.name)).to.include("自动选择 NFT ID");
   });
 
   it("ABI no longer exposes removed reveal, merge, or dual-mode queue methods", async function () {
     const Vault = await ethers.getContractFactory("NFTPVPVaultV1");
     const vaultNames = Vault.interface.fragments.filter((fragment) => fragment.type === "function").map((fragment) => fragment.name);
-    for (const removed of ["revealSeed", "claimRevealTimeoutWin", "mergeBaseNFTs", "enterNftQueue", "enterTokenQueue"]) {
+    for (const removed of ["revealSeed", "claimRevealTimeoutWin", "mergeBaseNFTs", "enterNftQueue", "enterTokenQueue", "mint1NFT", "mint2NFT", "mint5NFT", "mint10NFT", "enterQueue"]) {
       expect(vaultNames).to.not.include(removed);
     }
   });
 });
+

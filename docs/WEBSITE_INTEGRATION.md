@@ -14,9 +14,9 @@ Load contract addresses from the deployment record or Flap launch output:
 
 1. Connect the user's wallet on the target BSC network.
 2. Read Vault state through `getStats()`, `getMyInfo(address)`, `pendingNftDividends(address)`, and `pendingLossDividends(address)`.
-3. Mint NFTs through `mintNFTByCount(quantity)` or fixed shortcuts. The website approves `quantity * 100,000 Token` first.
-4. PVP: user selects a tier and one NFT ID, the website approves that tier's token amount, then calls `enterQueue(tierId, nftId)`.
-5. The first user creates a tier Round with a 5 minute join window. Other users can join the same Round before the deadline.
+3. Mint NFTs through `mintNFT(tokenAmount)` or `mintNFTByCount(quantity)`. For `mintNFTByCount`, the website approves `quantity * 100,000 Token` first.
+4. PVP: user selects a tier button, the website approves that tier's token amount, then calls `enterQueueByAmount(tokenAmount)`. The Vault automatically selects the first available NFT.
+5. The first user creates a waiting tier Round. The second user starts the 5 minute join window, and other users can join the same Round before the deadline.
 6. After the deadline, call or prompt `requestRoundRandomness(roundId)`. When VRF returns, call or prompt `settleRound(roundId)`.
 7. If the Round has one participant after the deadline, or if VRF does not return before timeout, show `emergencyCancelRound(roundId)` to eligible users.
 8. Claim BNB rewards through `claimNftDividends()` and `claimLossDividends()`.
@@ -40,12 +40,11 @@ The Vault still uses before/after balance checks for compatibility with third-pa
 
 ## Flap UI Compatibility
 
-Flap should render the Vault actions from `vaultUISchema()`:
+Flap should render the simplified Vault actions from `vaultUISchema()`:
 
-- `mint1NFT()`, `mint2NFT()`, `mint5NFT()`, `mint10NFT()`
-- `mintNFTByCount(uint256 quantity)` for website-driven approvals
-- `enterQueue(uint256 tierId, uint256 nftId)`
-- `leaveQueue(uint256 tierId)`
+- `mintNFT(uint256 tokenAmount)`
+- `enterQueueByAmount(uint256 tokenAmount)`
+- `leaveQueue()`
 - `requestRoundRandomness(uint256 roundId)`
 - `settleRound(uint256 roundId)`
 - `emergencyCancelRound(uint256 roundId)`
