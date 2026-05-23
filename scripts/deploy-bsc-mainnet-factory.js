@@ -74,6 +74,7 @@ async function main() {
     Number(preflight.vrfRequestConfirmations),
     vaultCreationCodeHash
   );
+  const txHash = factory.deploymentTransaction().hash;
   await factory.waitForDeployment();
   const factoryAddress = await factory.getAddress();
 
@@ -82,6 +83,7 @@ async function main() {
     chainId: Number(network.chainId),
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    txHash,
     NFTPVPVaultFactory: factoryAddress,
     PancakeRouter: preflight.pancakeRouter,
     WBNB: preflight.wbnb,
@@ -104,6 +106,7 @@ async function main() {
   fs.mkdirSync(deploymentsDir, { recursive: true });
   fs.writeFileSync(path.join(deploymentsDir, "bsc-mainnet-factory.json"), `${JSON.stringify(deployment, null, 2)}\n`);
 
+  console.log("Transaction hash:", txHash);
   console.log("NFTPVPVaultFactory:", factoryAddress);
   console.log("Deployment file: deployments/bsc-mainnet-factory.json");
 }
