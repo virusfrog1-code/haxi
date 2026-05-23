@@ -47,10 +47,10 @@ require_envs() {
     VRF_KEY_HASH
     VRF_CALLBACK_GAS_LIMIT
     VRF_REQUEST_CONFIRMATIONS
-    FLAP_VAULT_PORTAL
-    DEPLOYER_PRIVATE_KEY
-    BSCSCAN_API_KEY
   )
+  if [[ "$MODE" == "deploy-factory" ]]; then
+    keys+=(DEPLOYER_PRIVATE_KEY)
+  fi
   for key in "${keys[@]}"; do
     if [[ -z "${!key:-}" ]]; then
       missing+=("$key")
