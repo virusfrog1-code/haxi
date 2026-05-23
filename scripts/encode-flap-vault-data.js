@@ -78,13 +78,33 @@ async function main() {
   );
 
   console.log("vaultCreationCodeHash:", vaultCreationCodeHash);
-  console.log("vaultData:", vaultData);
+  console.log("vaultData length:", vaultData.length);
+  console.log("vaultData head20:", vaultData.slice(0, 20));
+  console.log("vaultData tail20:", vaultData.slice(-20));
 
   const outDir = path.join(__dirname, "..", "deployments");
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "flap-vault-data-mainnet.txt");
-  fs.writeFileSync(outPath, `vaultCreationCodeHash: ${vaultCreationCodeHash}\nvaultData: ${vaultData}\n`);
+  fs.writeFileSync(outPath, `${vaultData}\n`);
   console.log("wrote:", outPath);
+
+  const metaPath = path.join(outDir, "flap-vault-data-mainnet.meta.json");
+  fs.writeFileSync(
+    metaPath,
+    `${JSON.stringify(
+      {
+        vaultCreationCodeHash,
+        vaultDataLength: vaultData.length,
+        head20: vaultData.slice(0, 20),
+        tail20: vaultData.slice(-20),
+        vaultDataHead20: vaultData.slice(0, 20),
+        vaultDataTail20: vaultData.slice(-20)
+      },
+      null,
+      2
+    )}\n`
+  );
+  console.log("wrote:", metaPath);
 }
 
 main().catch((error) => {
